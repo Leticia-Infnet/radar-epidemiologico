@@ -1,0 +1,79 @@
+[project]
+name = "radar-epidemiologico"
+version = "0.1.0"
+description = "Vigilância de arboviroses a partir dos dados abertos do Ministério da Saúde"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "huggingface-hub>=0.25",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "pydantic-settings>=2.4",
+]
+
+[dependency-groups]
+# Cada grupo corresponde a uma camada da arquitetura (AGENTS.md, seção 5).
+etl = [
+    "duckdb>=1.1",
+    "pandera[polars]>=0.20",
+    "polars>=1.9",
+    "tenacity>=9.0",
+]
+ml = [
+    "joblib>=1.4",
+    "scikit-learn>=1.5",
+    "statsmodels>=0.14",
+]
+app = [
+    "folium>=0.17",
+    "plotly>=5.24",
+    "streamlit>=1.39",
+    "streamlit-folium>=0.22",
+]
+# Dependências do chatbot em tempo de execução (vão para o Space).
+rag = [
+    "faiss-cpu>=1.8",
+    "groq>=0.11",
+    "rank-bm25>=0.2",
+    "sentence-transformers>=3.1",
+]
+# Dependências usadas só no CI de indexação; pesadas demais para o Space.
+indexacao = [
+    "docling>=2.5",
+    "pypdf>=5.0",
+    "ragas>=0.2",
+]
+eda = [
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+    "matplotlib>=3.9",
+    "nbconvert>=7.16",
+    "plotly>=5.24",
+]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+]
+
+[tool.uv]
+# `rag` e `indexacao` puxam torch e Docling; instale-os explicitamente com --group.
+default-groups = ["dev", "etl", "ml", "app", "eda"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["common", "etl", "ml", "rag", "app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

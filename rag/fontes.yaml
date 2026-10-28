@@ -1,0 +1,11 @@
+# Manuais do Ministério da Saúde que compõem o corpus do RAG.
+# Versione apenas as URLs; os PDFs são baixados no CI (AGENTS.md, seção 4.4).
+# A lista definitiva ainda está em aberto (AGENTS.md, seção 12).
+#
+# Formato de cada item:
+# - id: dengue-manejo-clinico
+#   titulo: "Dengue: diagnóstico e manejo clínico, adulto e criança"
+#   doenca: dengue
+#   url: https://bvsms.saude.gov.br/...
+#   edicao: "6ª edição, 2024"
+manuais: []

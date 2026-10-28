@@ -1,0 +1,28 @@
+name: deploy-space
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "common/**", "rag/**", "ml/**", "space/**", "pyproject.toml", "uv.lock"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.RADAR_HF_TOKEN }}
+      SPACE: ${{ vars.RADAR_HF_SPACE_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Montar a pasta do Space
+        run: |
+          mkdir -p _space
+          cp -r app common ml rag _space/
+          cp space/README.md _space/README.md
+          uv export --locked --no-hashes --no-dev --no-default-groups \
+            --group app --group ml --group rag --no-emit-project > _space/requirements.txt
+      - name: Publicar no Hugging Face Spaces
+        run: |
+          uvx --from huggingface_hub hf upload "$SPACE" _space . \
+            --repo-type space --commit-message "deploy: ${GITHUB_SHA::7}"

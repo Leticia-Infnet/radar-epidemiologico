@@ -1,0 +1,25 @@
+# Ambiente Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Segredos
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Restrição do projeto: nenhum dado persistido localmente (AGENTS.md, seção 2).
+# Dados, modelos e índices vivem no Hugging Face Hub.
+data/
+*.parquet
+*.csv
+*.joblib
+*.faiss
+*.pdf
+!docs/*.pdf

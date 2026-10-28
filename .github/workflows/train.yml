@@ -1,0 +1,20 @@
+name: train
+
+on:
+  workflow_dispatch:
+  # Habilitar quando o treino estiver implementado; rodar depois do ETL semanal.
+  # schedule:
+  #   - cron: "0 12 * * 1"
+
+jobs:
+  treino:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RADAR_HF_TOKEN: ${{ secrets.RADAR_HF_TOKEN }}
+      RADAR_HF_DATASET_REPO: ${{ vars.RADAR_HF_DATASET_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group ml --group etl --no-default-groups
+      - run: uv run python -m ml.train
