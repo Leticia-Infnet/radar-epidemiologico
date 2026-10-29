@@ -369,6 +369,8 @@ def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, mo
     ]
     if detalhe.get("telefone"):
         linhas.append(f"Telefone: {html.escape(detalhe['telefone'])}")
+    if detalhe.get("email"):
+        linhas.append(f"E-mail: {html.escape(detalhe['email'].lower())}")
     if detalhe.get("turno"):
         linhas.append(html.escape(detalhe["turno"].capitalize()))
     if ubs.get("coordenada_aproximada"):

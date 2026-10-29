@@ -95,7 +95,7 @@ def _ordenar(origem: geo.Localizacao, proximas: pd.DataFrame, modo: str) -> pd.D
 
 
 st.html(ESTILO_PAGINA)
-st.title("Unidades básicas de saúde mais próximas")
+st.title("🗺️ Unidades básicas de saúde mais próximas")
 st.caption("Informe o CEP para ver no mapa as UBS mais próximas e o caminho até elas.")
 
 with st.form("busca_ubs"):
@@ -183,6 +183,8 @@ if resultado := st.session_state.get("mapa_ubs"):
                 st.write(local)
             if detalhe.get("telefone"):
                 st.write(f"Telefone: {detalhe['telefone']}")
+            if detalhe.get("email"):
+                st.write(f"E-mail: {detalhe['email'].lower()}")
             if detalhe.get("turno"):
                 st.write(detalhe["turno"].capitalize())
             if ubs["coordenada_aproximada"]:
