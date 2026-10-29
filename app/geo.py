@@ -188,9 +188,28 @@ def detalhar_estabelecimento(
 
 
 @dataclass(frozen=True)
-class Rota:
-    """Trajeto a pé calculado pelo OSRM da FOSSGIS sobre dados do OpenStreetMap."""
+class Modo:
+    """Meio de transporte e o serviço OSRM da FOSSGIS que o atende."""
 
+    rotulo: str
+    servico: str
+    perfil: str
+    motor_osm: str
+    cor: str
+
+
+# O servidor de demonstração do OSRM só roteia carro; a FOSSGIS mantém os dois perfis.
+MODOS = {
+    "a_pe": Modo("a pé", "routed-foot", "foot", "fossgis_osrm_foot", "#1d4ed8"),
+    "carro": Modo("de carro", "routed-car", "driving", "fossgis_osrm_car", "#7c3aed"),
+}
+
+
+@dataclass(frozen=True)
+class Rota:
+    """Trajeto calculado pelo OSRM da FOSSGIS sobre dados do OpenStreetMap."""
+
+    modo: str
     distancia_m: float
     duracao_s: float
     trajeto: tuple[tuple[float, float], ...]  # pares (lat, lon)
@@ -201,65 +220,73 @@ def _pontos_osrm(*pontos: tuple[float, float]) -> str:
     return ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in pontos)
 
 
-def _cliente_osrm(s: Settings) -> httpx.Client:
+def _cliente_osrm(s: Settings, modo: str) -> httpx.Client:
     # Política da FOSSGIS: User-Agent válido, até 1 req/s, sem uso pesado. A página
-    # faz duas chamadas por busca (table + route), ambas em cache.
+    # faz uma chamada table por busca e uma route por destino, todas em cache.
     return httpx.Client(
-        base_url=s.osrm_foot_url, timeout=TIMEOUT_S, headers={"User-Agent": s.user_agent}
+        base_url=f"{s.osrm_base_url}/{MODOS[modo].servico}",
+        timeout=TIMEOUT_S,
+        headers={"User-Agent": s.user_agent},
     )
 
 
-def distancias_a_pe(
+def distancias(
     origem: Localizacao,
     destinos: list[tuple[float, float]],
+    modo: str = "a_pe",
     cliente: httpx.Client | None = None,
     settings: Settings | None = None,
 ) -> list[tuple[float, float] | None]:
-    """Distância (m) e tempo (s) a pé até cada destino, numa única requisição `table`.
+    """Distância (m) e tempo (s) até cada destino, numa única requisição `table`.
 
     Devolve None na posição de um destino sem rota, e só Nones se o serviço falhar.
     """
     s = settings or get_settings()
     vazio: list[tuple[float, float] | None] = [None] * len(destinos)
-    caminho = "/table/v1/foot/" + _pontos_osrm((origem.latitude, origem.longitude), *destinos)
+    caminho = f"/table/v1/{MODOS[modo].perfil}/" + _pontos_osrm(
+        (origem.latitude, origem.longitude), *destinos
+    )
     try:
-        with cliente or _cliente_osrm(s) as c:
+        with cliente or _cliente_osrm(s, modo) as c:
             r = c.get(caminho, params={"sources": "0", "annotations": "distance,duration"})
         d = r.json()
     except (httpx.HTTPError, ValueError) as exc:
-        log.warning("OSRM table indisponível: %s", exc)
+        log.warning("OSRM table (%s) indisponível: %s", modo, exc)
         return vazio
     if r.status_code != 200 or d.get("code") != "Ok":
         return vazio
-    distancias, duracoes = d["distances"][0][1:], d["durations"][0][1:]
+    metros, segundos = d["distances"][0][1:], d["durations"][0][1:]
     return [
         (dist, dur) if dist is not None and dur is not None else None
-        for dist, dur in zip(distancias, duracoes, strict=True)
+        for dist, dur in zip(metros, segundos, strict=True)
     ]
 
 
-def rota_a_pe(
+def rota(
     origem: Localizacao,
     lat: float,
     lon: float,
+    modo: str = "a_pe",
     cliente: httpx.Client | None = None,
     settings: Settings | None = None,
 ) -> Rota | None:
-    """Trajeto a pé da origem até o ponto; None se o serviço falhar ou não houver rota."""
+    """Trajeto da origem até o ponto; None se o serviço falhar ou não houver rota."""
     s = settings or get_settings()
-    caminho = "/route/v1/foot/" + _pontos_osrm((origem.latitude, origem.longitude), (lat, lon))
+    caminho = f"/route/v1/{MODOS[modo].perfil}/" + _pontos_osrm(
+        (origem.latitude, origem.longitude), (lat, lon)
+    )
     try:
-        with cliente or _cliente_osrm(s) as c:
+        with cliente or _cliente_osrm(s, modo) as c:
             r = c.get(caminho, params={"overview": "full", "geometries": "geojson"})
         d = r.json()
     except (httpx.HTTPError, ValueError) as exc:
-        log.warning("OSRM route indisponível: %s", exc)
+        log.warning("OSRM route (%s) indisponível: %s", modo, exc)
         return None
     if r.status_code != 200 or d.get("code") != "Ok" or not d.get("routes"):
         return None
-    rota = d["routes"][0]
-    trajeto = tuple((lat_, lon_) for lon_, lat_ in rota["geometry"]["coordinates"])
-    return Rota(rota["distance"], rota["duration"], trajeto)
+    achada = d["routes"][0]
+    trajeto = tuple((lat_, lon_) for lon_, lat_ in achada["geometry"]["coordinates"])
+    return Rota(modo, achada["distance"], achada["duration"], trajeto)
 
 
 def formatar_distancia(metros: float) -> str:
@@ -279,52 +306,59 @@ def formatar_duracao(segundos: float) -> str:
 
 
 def _tem_rota(ubs: dict[str, Any]) -> bool:
-    a_pe = ubs.get("distancia_pe_m")
-    return a_pe is not None and not pd.isna(a_pe)
+    metros = ubs.get("distancia_rota_m")
+    return metros is not None and not pd.isna(metros)
 
 
 def _linha_reta(ubs: dict[str, Any]) -> str:
     return f"{formatar_distancia(ubs['distancia_km'] * 1000)} em linha reta"
 
 
-def distancia_resumida(ubs: dict[str, Any]) -> str:
+def distancia_resumida(ubs: dict[str, Any], modo: str = "a_pe") -> str:
     """`650 m a pé (8 min)` quando há rota; senão, a distância em linha reta."""
     if not _tem_rota(ubs):
         return _linha_reta(ubs)
     return (
-        f"{formatar_distancia(ubs['distancia_pe_m'])} a pé "
-        f"({formatar_duracao(ubs['duracao_pe_s'])})"
+        f"{formatar_distancia(ubs['distancia_rota_m'])} {MODOS[modo].rotulo} "
+        f"({formatar_duracao(ubs['duracao_rota_s'])})"
     )
 
 
-def descrever_distancia(ubs: dict[str, Any]) -> str:
+def descrever_distancia(ubs: dict[str, Any], modo: str = "a_pe") -> str:
     """`650 m a pé (8 min) · 0,4 km em linha reta`, ou só a linha reta sem rota."""
     if not _tem_rota(ubs):
         return _linha_reta(ubs)
-    return f"{distancia_resumida(ubs)} · {_linha_reta(ubs)}"
+    return f"{distancia_resumida(ubs, modo)} · {_linha_reta(ubs)}"
 
 
-def link_rota(origem: Localizacao, lat: float, lon: float) -> str:
-    """Rota a pé no site do OpenStreetMap, usada quando o cálculo no app falha."""
+def link_rota(origem: Localizacao, lat: float, lon: float, modo: str = "a_pe") -> str:
+    """Rota no site do OpenStreetMap, usada quando o cálculo no app falha."""
     return (
-        "https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot"
+        f"https://www.openstreetmap.org/directions?engine={MODOS[modo].motor_osm}"
         f"&route={origem.latitude:.5f}%2C{origem.longitude:.5f}%3B{lat:.5f}%2C{lon:.5f}"
     )
 
 
+# Tiles padrão do OpenStreetMap: gratuitos e sem chave (o CARTO passou a exigir chave).
+# Para um mapa menos carregado, o filtro CSS dessatura e suaviza só a camada de base;
+# rota e marcadores ficam com as cores originais.
+TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+CLASSE_BASE = "mapa-base-suave"
+ESTILO_BASE = (
+    f"<style>.{CLASSE_BASE} {{ filter: saturate(0.25) contrast(0.85) brightness(1.06); }}</style>"
+)
 ATRIBUICAO = (
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-    '&copy; <a href="https://carto.com/attributions">CARTO</a> · '
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · '
     'Rotas: <a href="https://routing.openstreetmap.de/">FOSSGIS</a> · '
     '<a href="https://www.openstreetmap.org/fixthemap">Corrigir o mapa</a>'
 )
 
 
-def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None) -> str:
+def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, modo: str) -> str:
     detalhe = detalhe or {}
     linhas = [
         f"<b>{posicao}. {html.escape(texto(detalhe.get('nome')) or texto(ubs['nome']))}</b>",
-        html.escape(descrever_distancia(ubs)),
+        html.escape(descrever_distancia(ubs, modo)),
         html.escape(texto(detalhe.get("endereco")) or texto(ubs.get("logradouro"))),
         html.escape(texto(detalhe.get("bairro")) or texto(ubs.get("bairro"))),
     ]
@@ -344,23 +378,22 @@ def mapa_ubs(
     detalhes: dict[str, dict[str, Any] | None],
     rota: Rota | None = None,
     destino: str | None = None,
+    modo: str = "a_pe",
 ) -> folium.Map:
-    """Mapa claro (CARTO Positron) com a origem, as UBS numeradas e a rota a pé.
+    """Mapa de base suavizado com a origem, as UBS numeradas e a rota até o destino.
 
     `destino` é o CNES da UBS da rota, destacada em verde.
     """
-    mapa = folium.Map(
-        location=[origem.latitude, origem.longitude],
-        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        attr=ATRIBUICAO,
-    )
+    mapa = folium.Map(location=[origem.latitude, origem.longitude], tiles=None)
+    folium.TileLayer(TILES, attr=ATRIBUICAO, max_zoom=19, class_name=CLASSE_BASE).add_to(mapa)
+    mapa.get_root().header.add_child(folium.Element(ESTILO_BASE))
     if rota:
         folium.PolyLine(
             rota.trajeto,
-            color="#1d4ed8",
+            color=MODOS[rota.modo].cor,
             weight=5,
             opacity=0.85,
-            tooltip=f"{formatar_distancia(rota.distancia_m)} a pé, "
+            tooltip=f"{formatar_distancia(rota.distancia_m)} {MODOS[rota.modo].rotulo}, "
             f"cerca de {formatar_duracao(rota.duracao_s)}",
         ).add_to(mapa)
     folium.Marker(
@@ -377,7 +410,9 @@ def mapa_ubs(
         folium.Marker(
             [ubs["latitude"], ubs["longitude"]],
             tooltip=f"{posicao}. {ubs['nome']}",
-            popup=folium.Popup(_popup(posicao, ubs, detalhes.get(ubs["cnes"])), max_width=300),
+            popup=folium.Popup(
+                _popup(posicao, ubs, detalhes.get(ubs["cnes"]), modo), max_width=300
+            ),
             icon=folium.Icon(color=cor, icon="plus-square", prefix="fa"),
         ).add_to(mapa)
     pontos = [[origem.latitude, origem.longitude]]

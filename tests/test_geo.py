@@ -178,35 +178,53 @@ def test_mapa_tem_origem_e_ubs_e_escapa_html():
     assert html.count("L.marker(") == 3
     assert "<script>alert(1)</script>" not in html
     assert "Localização aproximada" in html
-    assert "basemaps.cartocdn.com/light_all" in html
-    assert "fixthemap" in html
     assert "L.polyline(" not in html
 
 
-def test_mapa_desenha_rota_e_destaca_destino():
+def test_mapa_usa_tiles_sem_chave_com_filtro_e_atribuicao():
+    proximas = ubs_mais_proximas(construir_indice(UBS), UBS, -23.0, -46.0, k=1)
+    html = mapa_ubs(ORIGEM, proximas, {}).get_root().render()
+    assert "tile.openstreetmap.org" in html
+    assert "cartocdn" not in html  # CARTO passou a exigir chave de API
+    assert '"className": "mapa-base-suave"' in html
+    assert ".mapa-base-suave { filter:" in html
+    assert "fixthemap" in html
+
+
+@pytest.mark.parametrize(("modo", "cor"), [("a_pe", "#1d4ed8"), ("carro", "#7c3aed")])
+def test_mapa_desenha_rota_e_destaca_destino(modo, cor):
     proximas = ubs_mais_proximas(construir_indice(UBS), UBS, -23.0, -46.0, k=2)
-    rota = geo.Rota(650.0, 480.0, ((-23.0, -46.0), (-23.2, -46.3), (-23.5505, -46.6333)))
-    html = mapa_ubs(ORIGEM, proximas, {}, rota=rota, destino="0000001").get_root().render()
+    trajeto = ((-23.0, -46.0), (-23.2, -46.3), (-23.5505, -46.6333))
+    rota = geo.Rota(modo, 650.0, 480.0, trajeto)
+    html = mapa_ubs(ORIGEM, proximas, {}, rota=rota, destino="0000001", modo=modo)
+    html = html.get_root().render()
     assert html.count("L.polyline(") == 1
+    assert f'"color": "{cor}"' in html
     assert '"markerColor": "green"' in html
 
 
-def test_distancias_a_pe_numa_requisicao():
-    corpo = {
-        "code": "Ok",
-        "distances": [[0, 650.0, None]],
-        "durations": [[0, 480.0, None]],
-    }
-    resultado = geo.distancias_a_pe(ORIGEM, [(-23.1, -46.1), (-23.2, -46.2)], _osrm((200, corpo)))
+@pytest.mark.parametrize(("modo", "perfil"), [("a_pe", "foot"), ("carro", "driving")])
+def test_distancias_numa_requisicao_por_modo(modo, perfil):
+    pedidos = []
+    corpo = {"code": "Ok", "distances": [[0, 650.0, None]], "durations": [[0, 480.0, None]]}
+
+    def responder(request):
+        pedidos.append(request.url.path)
+        return httpx.Response(200, json=corpo)
+
+    cliente = httpx.Client(base_url="https://osrm.teste", transport=httpx.MockTransport(responder))
+    resultado = geo.distancias(ORIGEM, [(-23.1, -46.1), (-23.2, -46.2)], modo, cliente)
     assert resultado == [(650.0, 480.0), None]
+    assert pedidos == [
+        f"/table/v1/{perfil}/-46.000000,-23.000000;-46.100000,-23.100000;-46.200000,-23.200000"
+    ]
 
 
-def test_distancias_a_pe_com_servico_fora():
-    resultado = geo.distancias_a_pe(ORIGEM, [(-23.1, -46.1)], _osrm((502, {})))
-    assert resultado == [None]
+def test_distancias_com_servico_fora():
+    assert geo.distancias(ORIGEM, [(-23.1, -46.1)], "a_pe", _osrm((502, {}))) == [None]
 
 
-def test_rota_a_pe_converte_para_lat_lon():
+def test_rota_converte_para_lat_lon():
     corpo = {
         "code": "Ok",
         "routes": [
@@ -217,13 +235,14 @@ def test_rota_a_pe_converte_para_lat_lon():
             }
         ],
     }
-    rota = geo.rota_a_pe(ORIGEM, -23.1, -46.1, _osrm((200, corpo)))
-    assert rota.trajeto == ((-23.0, -46.0), (-23.1, -46.1))
-    assert rota.duracao_s == 159.0
+    achada = geo.rota(ORIGEM, -23.1, -46.1, "carro", _osrm((200, corpo)))
+    assert achada.modo == "carro"
+    assert achada.trajeto == ((-23.0, -46.0), (-23.1, -46.1))
+    assert achada.duracao_s == 159.0
 
 
-def test_rota_a_pe_sem_rota():
-    assert geo.rota_a_pe(ORIGEM, -23.1, -46.1, _osrm((200, {"code": "NoRoute"}))) is None
+def test_rota_inexistente():
+    assert geo.rota(ORIGEM, -23.1, -46.1, "a_pe", _osrm((200, {"code": "NoRoute"}))) is None
 
 
 @pytest.mark.parametrize(
@@ -242,10 +261,11 @@ def test_formatar_duracao(segundos, esperado):
 
 
 def test_descrever_distancia():
-    sem_rota = {"distancia_km": 0.42, "distancia_pe_m": float("nan")}
+    sem_rota = {"distancia_km": 0.42, "distancia_rota_m": float("nan")}
     assert geo.descrever_distancia(sem_rota) == "420 m em linha reta"
-    com_rota = {"distancia_km": 0.42, "distancia_pe_m": 650.0, "duracao_pe_s": 480.0}
+    com_rota = {"distancia_km": 0.42, "distancia_rota_m": 650.0, "duracao_rota_s": 480.0}
     assert geo.descrever_distancia(com_rota) == "650 m a pé (8 min) · 420 m em linha reta"
+    assert geo.distancia_resumida(com_rota, "carro") == "650 m de carro (8 min)"
 
 
 @pytest.mark.parametrize("valor", [None, float("nan"), pd.NA, "nan", "  "])
@@ -254,6 +274,8 @@ def test_texto_vazio(valor):
 
 
 def test_link_rota():
-    url = geo.link_rota(Localizacao(-8.0, -34.8, "x", ""), -8.01, -34.85)
-    assert url.startswith("https://www.openstreetmap.org/directions?")
+    origem = Localizacao(-8.0, -34.8, "x", "")
+    url = geo.link_rota(origem, -8.01, -34.85)
+    assert url.startswith("https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot")
     assert "-8.00000%2C-34.80000%3B-8.01000%2C-34.85000" in url
+    assert "engine=fossgis_osrm_car" in geo.link_rota(origem, -8.01, -34.85, "carro")

@@ -49,14 +49,16 @@ def test_detalhe_cnes_real():
     assert detalhe["cnes"] == "0000302"
 
 
-def test_rota_a_pe_real():
-    from app.geo import Localizacao, distancias_a_pe, rota_a_pe
+@pytest.mark.parametrize("modo", ["a_pe", "carro"])
+def test_rota_real(modo):
+    from app.geo import Localizacao, distancias, rota
 
     origem = Localizacao(-8.00889, -34.85528, "teste", "")
-    destino = (-8.0105, -34.8545)
-    [a_pe] = distancias_a_pe(origem, [destino])
-    rota = rota_a_pe(origem, *destino)
-    assert a_pe is not None and rota is not None
-    assert rota.distancia_m == pytest.approx(a_pe[0], rel=0.05)
-    # Perfil a pé: bem mais lento que carro (cerca de 5 km/h).
-    assert rota.duracao_s > rota.distancia_m / 2
+    destino = (-7.9969, -34.8642)
+    [medida] = distancias(origem, [destino], modo)
+    achada = rota(origem, *destino, modo)
+    assert medida is not None and achada is not None
+    assert achada.distancia_m == pytest.approx(medida[0], rel=0.05)
+    velocidade_kmh = achada.distancia_m / achada.duracao_s * 3.6
+    # A pé, cerca de 5 km/h; de carro, bem mais rápido.
+    assert (velocidade_kmh < 7) if modo == "a_pe" else (velocidade_kmh > 15)

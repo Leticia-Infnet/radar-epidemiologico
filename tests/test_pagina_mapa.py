@@ -21,18 +21,22 @@ def sem_rede(monkeypatch):
         lambda cnes: {"nome": f"Detalhe {cnes}", "telefone": "(81) 0000-0000"},
     )
     # Recife (0000003) fica a 4 km a pé; o Rio (0000002), a 900 m: a ordem deve inverter.
-    a_pe = {"0000003": (4000.0, 3000.0), "0000002": (900.0, 700.0), "0000001": None}
+    # De carro, Recife volta a ser a primeira.
+    medidas = {
+        "a_pe": {"0000003": (4000.0, 3000.0), "0000002": (900.0, 700.0), "0000001": None},
+        "carro": {"0000003": (500.0, 60.0), "0000002": (3000.0, 300.0), "0000001": None},
+    }
 
-    def distancias(origem, destinos):
-        por_ponto = {(u.latitude, u.longitude): a_pe[u.cnes] for u in UBS.itertuples()}
+    def distancias(origem, destinos, modo):
+        por_ponto = {(u.latitude, u.longitude): medidas[modo][u.cnes] for u in UBS.itertuples()}
         return [por_ponto[d] for d in destinos]
 
-    monkeypatch.setattr(geo, "distancias_a_pe", distancias)
-    monkeypatch.setattr(
-        geo,
-        "rota_a_pe",
-        lambda o, lat, lon: Rota(900.0, 700.0, ((o.latitude, o.longitude), (lat, lon))),
-    )
+    def rota(o, lat, lon, modo):
+        distancia, duracao = (900.0, 700.0) if modo == "a_pe" else (500.0, 60.0)
+        return Rota(modo, distancia, duracao, ((o.latitude, o.longitude), (lat, lon)))
+
+    monkeypatch.setattr(geo, "distancias", distancias)
+    monkeypatch.setattr(geo, "rota", rota)
 
 
 def _buscar(cep: str, quantidade: int = 2) -> AppTest:
@@ -51,18 +55,32 @@ def test_busca_ordena_a_pe_e_mostra_rota(sem_rede, monkeypatch):
     textos = " ".join(m.value for m in app.markdown)
     assert "1. Detalhe 0000002" in textos  # mais perto a pé, embora mais longe em linha reta
     assert "Rua Teste, Recife, PE" in textos
-    assert app.radio[0].value == "0000002"
+    assert app.radio[0].value == "a_pe"
+    assert app.radio[1].value == "0000002"
     legendas = " ".join(c.value for c in app.caption)
     assert "Caminho a pé: 900 m, cerca de 12 min" in legendas
+
+
+def test_modo_carro_reordena_e_mostra_rota_de_carro(sem_rede, monkeypatch):
+    monkeypatch.setattr(geo, "geocodificar_cep", lambda cep: RECIFE)
+    app = _buscar("50050-002", quantidade=2)
+    app.radio[0].set_value("carro")
+    app.run()
+    assert not app.exception
+    textos = " ".join(m.value for m in app.markdown)
+    assert "1. Detalhe 0000003" in textos
+    legendas = " ".join(c.value for c in app.caption)
+    assert "Caminho de carro: 500 m, cerca de 1 min" in legendas
+    assert "sem considerar o trânsito" in legendas
 
 
 def test_trocar_destino_mantem_resultado(sem_rede, monkeypatch):
     monkeypatch.setattr(geo, "geocodificar_cep", lambda cep: RECIFE)
     app = _buscar("50050-001", quantidade=2)
-    app.radio[0].set_value("0000003")
+    app.radio[1].set_value("0000003")
     app.run()
     assert not app.exception
-    assert app.radio[0].value == "0000003"
+    assert app.radio[1].value == "0000003"
     assert len([m for m in app.markdown if m.value.startswith("**1.")]) == 1
 
 
