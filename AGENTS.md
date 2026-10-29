@@ -311,6 +311,24 @@ Renderização com Folium, popup por unidade com os dados do CNES.
 Melhoria opcional: distância por rota em vez de linha reta, via OSRM público ou
 OpenRouteService.
 
+**Implementado** (PR #1, 2026-10-29), em `app/geo.py` e `app/pages/3_mapa.py`:
+
+- Geocodificação: BrasilAPI → AwesomeAPI → ViaCEP + Nominatim. Toda coordenada passa pela
+  caixa do Brasil, porque a BrasilAPI já devolveu endereço inventado para CEP inexistente.
+  CEPs gerais de cidade (terminados em 000) costumam falhar nos três.
+- Rotas a pé e de carro pelo OSRM da FOSSGIS (`routing.openstreetmap.de`, perfis
+  `routed-foot` e `routed-car`, sem chave). O servidor de demonstração do OSRM só roteia
+  carro. Uma requisição `table` por busca ordena as unidades pela distância no meio
+  escolhido; uma `route` traça o caminho até a unidade selecionada. Política da FOSSGIS:
+  User-Agent válido, até 1 req/s, sem uso pesado, atribuição com link "Corrigir o mapa".
+- Mapa de base: tiles do OpenStreetMap com filtro CSS (dessatura e suaviza só a camada de
+  base). O CARTO passou a exigir chave.
+- Popup e card mostram os mesmos campos rotulados (Trajeto, Endereço, Turno, Telefone,
+  E-mail), montados por `geo.campos_unidade`. O código CNES não é exibido.
+- Geocodificação, CNES e rotas ficam em `st.cache_data`; falhas não são cacheadas.
+- A página só chama a rede depois do envio do formulário, e os testes simulam todos os
+  serviços externos.
+
 ### 7.4 Chatbot RAG
 
 Orienta o usuário a partir dos sintomas relatados, **sem diagnosticar**.
@@ -337,12 +355,20 @@ metadados.
 |---|---|
 | Coordenadas da DEMAS vêm como string com **vírgula decimal** (`"-8,21811"`) | Normalizar no ETL: `float(s.replace(",", "."))` |
 | UBS com coordenada ausente ou fora do Brasil | Filtrar por bounding box: latitude entre -34 e 6, longitude entre -74 e -34 |
-| `limit` da DEMAS é ≤ 20 | Paginação assíncrona com backoff; jamais consultar ao vivo para análise |
+| `limit` da DEMAS vai até 1000 (não 20, como se supunha), mas a carga nacional ainda é enorme | Paginação assíncrona com backoff; jamais consultar ao vivo para análise |
 | App no Community Cloud não tem disco persistente | Baixar índice e modelo do Hub no startup |
 | PyMuPDF é AGPL | Usar Docling ou pypdf |
 | k-fold aleatório em série temporal | Usar `TimeSeriesSplit` |
 | Códigos IBGE de 6 vs 7 dígitos | Padronizar cedo. A DEMAS usa 6 dígitos (sem dígito verificador); o IBGE usa 7 |
 | `codigo_cnes` com zeros à esquerda | Tratar como string, nunca como inteiro |
+| Parâmetro `campos` da DEMAS deixa a consulta lenta (até HTTP 502) | Não usar; baixar a linha inteira e selecionar colunas localmente |
+| `/assistencia-a-saude/cnes-profissionais` filtrado por estabelecimento devolve **um registro por requisição**, ignorando o `limit` | Inviável ao vivo ou por ETL via API; usar os arquivos mensais `PF*.dbc` do FTP do DATASUS |
+| API do IBGE recusa conexões do GitHub Actions | Etapa `municipios` roda localmente (seção 4.2) |
+| Hugging Face Spaces cobra para apps Gradio/Docker; o SDK `streamlit` foi descontinuado | App no Streamlit Community Cloud (seção 6) |
+| Tiles do CARTO respondem HTTP 200 com marca d'água "API KEY REQUIRED" | Usar tiles do OpenStreetMap; ao testar tiles, olhar a imagem, não só o status |
+| Servidor de demonstração do OSRM ignora o perfil e roteia sempre de carro | Usar o OSRM da FOSSGIS (seção 7.3) |
+| Campos opcionais do Parquet (bairro, logradouro) chegam ao pandas como `NaN` (float) | Usar `geo.texto()` antes de exibir ou escapar |
+| `uv run` no CI ressincroniza os grupos padrão por cima do `uv sync --group ...` | `UV_NO_SYNC=1` nos workflows |
 
 ---
 
@@ -400,23 +426,35 @@ metadados.
 - Códigos IBGE e CNES sempre como `str`.
 - Datas em ISO 8601; semana epidemiológica como campo separado, não derivada em runtime.
 - Mensagens de commit e docstrings em português.
+- Cada funcionalidade nova vai numa branch `feature/<nome>`, com pull request para a `main`;
+  nada de funcionalidade commitada direto na `main`. Commit, push, PR e merge só quando a
+  usuária pedir.
+- Segredos só no `.env` (ignorado pelo git), nunca no `.env.example`. Conferir o diff contra
+  `hf_` antes de commitar.
+- Notebooks versionados sem saídas, para que dados não entrem no repositório.
+- Ao mudar os grupos `app` ou `ml`, regenerar `app/requirements.txt` com
+  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --no-emit-project -o app/requirements.txt`;
+  o CI falha se ele estiver desatualizado.
 
 ---
 
 ## 11. Ordem de implementação sugerida
 
-0. **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
+Situação em 2026-10-29 entre colchetes.
+
+
+0. [Feito; decisões pendentes, seção 12] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
    conformidade da API, esquema e qualidade de cada fonte, volume e custo de extração,
    sazonalidade e sobredispersão das séries. Suas conclusões fixam as decisões de ETL
    (município de referência, semana de referência, definição de caso, recorte inicial)
    e servem de base para o modelo. O notebook não grava dados em disco.
-1. Cliente da DEMAS com paginação e retry, mais teste contra um município pequeno.
-2. ETL de UBS completo (dataset menor, valida o pipeline ponta a ponta) e publicação no Hub.
-3. Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
-4. ETL de arboviroses com recorte inicial, mais o dicionário de municípios do IBGE.
-5. Feature 1, o dashboard.
-6. Feature 2, previsão, começando pelo baseline sazonal.
-7. Feature 4, o chatbot RAG.
+1. [Feito] Cliente da DEMAS com paginação e retry, mais teste contra um município pequeno.
+2. [Feito] ETL de UBS completo (dataset menor, valida o pipeline ponta a ponta) e publicação no Hub.
+3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
+4. [Dicionário de municípios feito; arboviroses pendente] ETL de arboviroses com recorte inicial, mais o dicionário de municípios do IBGE.
+5. [Pendente] Feature 1, o dashboard.
+6. [Pendente] Feature 2, previsão, começando pelo baseline sazonal.
+7. [Pendente] Feature 4, o chatbot RAG.
 
 ---
 
@@ -430,7 +468,62 @@ metadados.
   (notificações totais ou casos prováveis), a partir do notebook de análise exploratória.
 - Definir o recorte geográfico inicial da carga de arboviroses.
 - Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.
+- Profissionais por UBS (pedido da usuária): ETL dos arquivos mensais `PF<UF><AAMM>.dbc` do
+  FTP do DATASUS (`ftp.datasus.gov.br/dissemin/publicos/CNES/200508_/Dados/PF/`; PE de
+  2026-07 tem cerca de 13 MB), agregando as ocupações (CBO) por CNES, sem nomes. A verificar:
+  licença da biblioteca de leitura de `.dbc` (não pode ser AGPL) e se o FTP aceita conexões
+  do GitHub Actions. Especialistas (dermatologia, psiquiatria) quase não aparecem em UBS.
 - A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
   (julho), não entre fevereiro e maio (seção 7.2). Modelar a sazonalidade por região ou município.
 - Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS, apesar da
   epidemia em Pernambuco: pode haver lacuna de cobertura nos primeiros anos do agravo.
+
+---
+
+## 13. Estado atual e contexto para novas sessões
+
+Atualizado em 2026-10-29.
+
+### Onde as coisas estão
+
+| O quê | Onde |
+|---|---|
+| Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida) e `municipios/` (5.571), cada um com `metadados.json` |
+| Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
+| Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
+| Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
+
+### Ambiente da usuária
+
+- Ubuntu no WSL; repositório em `~/radar-epidemiologico` (sistema de arquivos do Linux).
+- `uv` em `~/.local/bin`; `uv sync` instala os grupos `dev`, `etl`, `ml`, `app` e `eda`.
+- `gh` autenticado como `Leticia-Infnet`; conta do Hugging Face `LeticiaF`.
+- `.env` local com `RADAR_HF_TOKEN` de **escrita**, usado para publicar os municípios.
+- Segredos no GitHub: `RADAR_HF_TOKEN` (secret) e `RADAR_HF_DATASET_REPO` (variable).
+- Rodar o app: `uv run streamlit run app/main.py --server.headless true` e abrir
+  `http://localhost:8501` no Windows.
+- Não há navegador headless no ambiente (faltam bibliotecas do sistema, sem `sudo`): para
+  checar visual, gerar prévias com os tiles reais ou pedir à usuária.
+
+### O que está implementado
+
+- `etl/`: cliente DEMAS (paginação, retry, contagem por busca binária), normalização,
+  calendário epidemiológico, contratos Pandera, pipeline `municipios` e `ubs` com piso de
+  linhas e `--sem-publicar`. `arboviroses` ainda levanta `NotImplementedError`.
+- `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
+- `app/`: página inicial e mapa de UBS completos; dashboard, previsão e chatbot são
+  esqueletos "em construção".
+- `ml/`: atributos (Fourier, lags, médias móveis), baseline sazonal, MAE e MASE; treino pendente.
+- `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
+  o resto são esqueletos. `rag/fontes.yaml` está vazio.
+- Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
+- Workflows: `ci` (push e PR), `etl` (manual; cron comentado até `arboviroses` existir),
+  `train` e `index` (esqueletos).
+
+### Próximos passos combinados
+
+1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
+2. ETL de arboviroses e dashboard (etapas 4 e 5).
+3. Profissionais por UBS, na branch `feature/profissionais-ubs` (seção 12).
+
