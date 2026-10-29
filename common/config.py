@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     ibge_municipios_url: str = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
     brasilapi_cep_url: str = "https://brasilapi.com.br/api/cep/v2/{cep}"
     awesomeapi_cep_url: str = "https://cep.awesomeapi.com.br/json/{cep}"
+    viacep_url: str = "https://viacep.com.br/ws/{cep}/json/"
+    nominatim_url: str = "https://nominatim.openstreetmap.org/search"
+    # OSRM da FOSSGIS, com perfis a pé (routed-foot) e de carro (routed-car).
+    osrm_base_url: str = "https://routing.openstreetmap.de"
     # Cabeçalhos HTTP aceitam só ASCII.
     user_agent: str = "radar-epidemiologico/0.1 (projeto de extensao universitaria)"
 
