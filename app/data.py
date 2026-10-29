@@ -1,6 +1,6 @@
 """Carregamento dos artefatos publicados no Hugging Face Hub, com cache do Streamlit.
 
-O Space não tem disco persistente: tudo é lido do Hub no startup e mantido em memória.
+O Community Cloud não tem disco persistente: tudo é lido do Hub e mantido em memória.
 """
 
 import pandas as pd

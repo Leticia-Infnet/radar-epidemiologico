@@ -10,6 +10,7 @@ build/
 
 # Segredos
 .env
+.streamlit/secrets.toml
 
 # Jupyter
 .ipynb_checkpoints/

@@ -156,7 +156,7 @@ Armazenamento            Hugging Face Hub (gratuito)
                          - índice vetorial: FAISS + chunks
         |
         v
-Aplicação                Streamlit em Hugging Face Spaces
+Aplicação                Streamlit Community Cloud
                          - dashboard · previsão · mapa UBS · chatbot
         |
         v
@@ -193,15 +193,21 @@ O diagrama visual está em `arquitetura-arboviroses.jpg`.
   PostGIS, 500 MB grátis) ou Neon.
 
 ### Aplicação
-- **Streamlit** hospedado em **Hugging Face Spaces**, não no Streamlit Community Cloud.
-  O Space é do tipo **Docker** (`space/Dockerfile`): o SDK `streamlit` dos Spaces foi
-  descontinuado em 2025-04-30.
-  Spaces free tier dá 2 vCPU, 16 GB de RAM e 50 GB de disco. O Community Cloud fica em
-  torno de 1 GB e estoura ao carregar o modelo de embeddings.
+- **Streamlit** hospedado no **Streamlit Community Cloud**, ligado ao repositório GitHub:
+  cada push na `main` atualiza o app.
+- Por que não Hugging Face Spaces: criar Space que executa código (Gradio ou Docker) exige
+  plano pago; só Spaces estáticos são gratuitos. Verificado em 2026-10-28 (HTTP 402 na
+  criação do Space e nota na documentação de hardware dos Spaces). O SDK `streamlit` dos Spaces já fora descontinuado em
+  2025-04-30.
+- Limites do Community Cloud (documentação de fev/2024): de 690 MB a 2,7 GB de RAM, até
+  2 núcleos, e o app hiberna após 12 h sem tráfego. O chatbot precisa caber nisso (ver RAG).
+- Dependências do deploy em `app/requirements.txt`, gerado do `uv.lock` pelo `uv export`.
+  Um arquivo na pasta do entrypoint tem precedência sobre o `uv.lock` da raiz.
 - Cache: `st.cache_data` para dados, `st.cache_resource` para modelo, embedder e índice.
-- Segredos em "Repository secrets" do Space.
-- Atenção: o Space free hiberna após inatividade e **não tem disco persistente**. O índice
-  vetorial e o modelo devem ser baixados do Hub no startup.
+- Segredos em *Settings > Secrets* do app, em TOML. As chaves de nível raiz viram
+  variáveis de ambiente, lidas pelo `pydantic-settings`.
+- Atenção: o app **não tem disco persistente**. O índice vetorial e o modelo devem ser
+  baixados do Hub no startup.
 
 ### Visualização
 - **Plotly** para as séries temporais interativas.
@@ -218,7 +224,9 @@ O diagrama visual está em `arquitetura-arboviroses.jpg`.
   português. O e5 exige prefixos `query: ` e `passage: `.
 - Índice: **FAISS** ou **ChromaDB**, construído no CI e publicado no Hub.
 - Busca híbrida: `rank_bm25` + densa, fundidas por Reciprocal Rank Fusion.
-- Reranking: `BAAI/bge-reranker-v2-m3`.
+- Reranking: `BAAI/bge-reranker-v2-m3`. Com o limite de 2,7 GB do Community Cloud,
+  embedder e reranker juntos não cabem com folga: preferir `multilingual-e5-small` e
+  avaliar se o reranker compensa.
 - Avaliação: `Ragas` (fidelidade e precisão de contexto).
 
 ### LLM
@@ -226,12 +234,13 @@ Ponto onde "gratuito + hospedado + 100% open source" não coexistem perfeitament
 honestas:
 - **Groq free tier** com Llama 3.3 70B — pesos abertos, serviço proprietário, custo zero,
   latência excelente. **Escolha recomendada.**
-- `llama-cpp-python` com Qwen2.5-3B quantizado rodando na CPU do Space — totalmente
-  autocontido, mas lento. Usar como fallback.
+- `llama-cpp-python` com Qwen2.5-3B quantizado rodando na CPU — totalmente autocontido,
+  mas lento e com cerca de 2 GB de RAM, o que não cabe junto do embedder no Community
+  Cloud. Fallback só se o Groq ficar indisponível.
 
 ### Transversal
 - `uv` para dependências, `Ruff` para lint e formatação, `pytest` para testes.
-- Workflow do Actions que sincroniza o repositório com o Space a cada push.
+- Deploy contínuo pelo Community Cloud; o CI verifica que `app/requirements.txt` acompanha o `uv.lock`.
 - Custo total do projeto: R$ 0.
 
 ---
@@ -321,7 +330,7 @@ metadados.
 | Coordenadas da DEMAS vêm como string com **vírgula decimal** (`"-8,21811"`) | Normalizar no ETL: `float(s.replace(",", "."))` |
 | UBS com coordenada ausente ou fora do Brasil | Filtrar por bounding box: latitude entre -34 e 6, longitude entre -74 e -34 |
 | `limit` da DEMAS é ≤ 20 | Paginação assíncrona com backoff; jamais consultar ao vivo para análise |
-| Space free não tem disco persistente | Baixar índice e modelo do Hub no startup |
+| App no Community Cloud não tem disco persistente | Baixar índice e modelo do Hub no startup |
 | PyMuPDF é AGPL | Usar Docling ou pypdf |
 | k-fold aleatório em série temporal | Usar `TimeSeriesSplit` |
 | Códigos IBGE de 6 vs 7 dígitos | Padronizar cedo. A DEMAS usa 6 dígitos (sem dígito verificador); o IBGE usa 7 |
@@ -334,11 +343,10 @@ metadados.
 ```
 .
 ├── .github/workflows/
-│   ├── ci.yml               # push/PR: Ruff e pytest
+│   ├── ci.yml               # push/PR: Ruff, pytest e sincronia do requirements.txt
 │   ├── etl.yml              # cron: extração, agregação, publicação no Hub
 │   ├── train.yml            # cron: retreino do modelo
-│   ├── index.yml            # manual: reindexação do RAG
-│   └── deploy-space.yml     # push: sincroniza com o HF Space
+│   └── index.yml            # manual: reindexação do RAG
 ├── notebooks/
 │   └── 01_analise_exploratoria.ipynb  # etapa 0: análise qualitativa e quantitativa
 ├── common/
@@ -360,7 +368,8 @@ metadados.
 │   ├── retrieve.py          # híbrido BM25 + denso, RRF, reranker
 │   └── seguranca.py         # filtro de sinais de alarme
 ├── app/
-│   ├── main.py              # st.navigation; ajusta o sys.path no Space
+│   ├── main.py              # st.navigation; ajusta o sys.path no Community Cloud
+│   ├── requirements.txt     # dependências do deploy, geradas do uv.lock
 │   ├── pages/
 │   │   ├── 1_dashboard.py
 │   │   ├── 2_previsao.py
@@ -368,7 +377,6 @@ metadados.
 │   │   └── 4_chatbot.py
 │   ├── data.py              # carregamento do Hub + cache
 │   └── geo.py               # CEP, BallTree, Folium
-├── space/                   # README (sdk: docker) e Dockerfile do HF Space
 ├── tests/
 ├── pyproject.toml           # dependências por grupo: etl, ml, app, rag, indexacao, eda, dev
 └── README.md

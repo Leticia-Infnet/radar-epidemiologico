@@ -1,4 +1,4 @@
-"""Ponto de entrada do Radar Epidemiológico (Streamlit em Hugging Face Spaces).
+"""Ponto de entrada do Radar Epidemiológico (Streamlit Community Cloud).
 
 Com `st.navigation`, este script roda a cada interação, antes da página escolhida.
 """
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-# No Space o projeto não é instalado como pacote; a raiz precisa estar no path
+# No Community Cloud o projeto não é instalado como pacote; a raiz precisa estar no path
 # para que `common`, `ml` e `rag` sejam importáveis pelas páginas.
 RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:

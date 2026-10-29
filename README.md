@@ -13,7 +13,7 @@ Projeto de extensão universitária. Contexto, requisitos e decisões técnicas 
 Fontes (DEMAS, IBGE, BrasilAPI, manuais MS)
   → GitHub Actions: ETL, treino, indexação
   → Hugging Face Hub: Parquet, modelo, índice FAISS
-  → Streamlit no Hugging Face Spaces
+  → Streamlit Community Cloud
 ```
 
 Nenhum dado é persistido localmente nem em serviço pago: o pipeline roda no CI e publica
@@ -28,9 +28,8 @@ no Hub; a aplicação lê do Hub no startup.
 | `etl/` | Extração (DEMAS, IBGE), normalização, validação Pandera e publicação no Hub |
 | `ml/` | Atributos, treino e backtest do modelo de tendência |
 | `rag/` | Ingestão dos manuais, chunking, indexação, busca e filtro de sinais de alarme |
-| `app/` | Aplicação Streamlit e suas páginas |
-| `space/` | Metadados do Hugging Face Space |
-| `.github/workflows/` | CI, ETL, treino, indexação e deploy do Space |
+| `app/` | Aplicação Streamlit, suas páginas e o `requirements.txt` do deploy |
+| `.github/workflows/` | CI, ETL, treino e indexação |
 | `tests/` | Testes `pytest` |
 
 ## Ambiente de desenvolvimento
@@ -49,8 +48,19 @@ Os grupos `rag` e `indexacao` puxam torch e Docling e ficam fora do padrão:
 `uv sync --group rag --group indexacao`.
 
 Copie `.env.example` para `.env` e preencha os segredos. No GitHub, cadastre
-`RADAR_HF_TOKEN` em *Secrets* e `RADAR_HF_DATASET_REPO` e `RADAR_HF_SPACE_REPO` em
-*Variables*.
+`RADAR_HF_TOKEN` em *Secrets* e `RADAR_HF_DATASET_REPO` em *Variables*.
+
+## Deploy
+
+A aplicação roda no [Streamlit Community Cloud](https://share.streamlit.io), ligada a
+este repositório: cada push na `main` atualiza o app. Configuração do app:
+
+- *Main file path*: `app/main.py`; *Python version* (em *Advanced settings*): 3.12.
+- Dependências: `app/requirements.txt`, gerado a partir do `uv.lock`. Ao mudar os grupos
+  `app` ou `ml`, regenere com
+  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --no-emit-project -o app/requirements.txt`.
+  O CI falha se o arquivo estiver desatualizado.
+- Segredos em *Settings > Secrets*, em TOML, com os mesmos nomes do `.env`.
 
 ## Ordem de implementação
 

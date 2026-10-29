@@ -15,3 +15,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
+      - name: app/requirements.txt sincronizado com o uv.lock
+        run: |
+          uv export --locked --no-hashes --no-dev --no-default-groups \
+            --group app --group ml --no-emit-project -o app/requirements.txt -q
+          git diff --exit-code app/requirements.txt

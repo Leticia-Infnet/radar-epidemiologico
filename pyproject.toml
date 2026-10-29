@@ -31,14 +31,14 @@ app = [
     "streamlit>=1.39",
     "streamlit-folium>=0.22",
 ]
-# Dependências do chatbot em tempo de execução (vão para o Space).
+# Dependências do chatbot em tempo de execução (vão para o Streamlit Community Cloud).
 rag = [
     "faiss-cpu>=1.8",
     "groq>=0.11",
     "rank-bm25>=0.2",
     "sentence-transformers>=3.1",
 ]
-# Dependências usadas só no CI de indexação; pesadas demais para o Space.
+# Dependências usadas só no CI de indexação; pesadas demais para a aplicação.
 indexacao = [
     "docling>=2.5",
     "pypdf>=5.0",

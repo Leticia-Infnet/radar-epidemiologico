@@ -25,7 +25,6 @@ class Settings(BaseSettings):
 
     hf_token: SecretStr | None = None
     hf_dataset_repo: str = "LeticiaF/radar-epidemiologico-dados"
-    hf_space_repo: str = "LeticiaF/radar-epidemiologico"
 
     groq_api_key: SecretStr | None = None
     groq_model: str = "llama-3.3-70b-versatile"
