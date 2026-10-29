@@ -194,6 +194,8 @@ O diagrama visual está em `arquitetura-arboviroses.jpg`.
 
 ### Aplicação
 - **Streamlit** hospedado em **Hugging Face Spaces**, não no Streamlit Community Cloud.
+  O Space é do tipo **Docker** (`space/Dockerfile`): o SDK `streamlit` dos Spaces foi
+  descontinuado em 2025-04-30.
   Spaces free tier dá 2 vCPU, 16 GB de RAM e 50 GB de disco. O Community Cloud fica em
   torno de 1 GB e estoura ao carregar o modelo de embeddings.
 - Cache: `st.cache_data` para dados, `st.cache_resource` para modelo, embedder e índice.
@@ -366,7 +368,7 @@ metadados.
 │   │   └── 4_chatbot.py
 │   ├── data.py              # carregamento do Hub + cache
 │   └── geo.py               # CEP, BallTree, Folium
-├── space/README.md          # metadados do HF Space (sdk, app_file, python_version)
+├── space/                   # README (sdk: docker) e Dockerfile do HF Space
 ├── tests/
 ├── pyproject.toml           # dependências por grupo: etl, ml, app, rag, indexacao, eda, dev
 └── README.md

@@ -3,9 +3,10 @@ title: Radar Epidemiológico
 emoji: 🦟
 colorFrom: green
 colorTo: yellow
-sdk: streamlit
-app_file: app/main.py
-python_version: "3.12"
+sdk: docker
+app_port: 8501
+tags:
+  - streamlit
 pinned: false
 ---
 
