@@ -1,5 +1,7 @@
 """Mapa das UBS mais próximas a partir do CEP, com rota a pé ou de carro (AGENTS.md, 7.3)."""
 
+import re
+
 import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
@@ -23,6 +25,11 @@ ESTILO_PAGINA = """
 [data-testid="stTextInputRootElement"] input { font-size: 1.15rem !important; }
 </style>
 """
+
+
+def _sem_markdown(texto: str) -> str:
+    """Escapa caracteres que o Markdown interpretaria em textos vindos do cadastro."""
+    return re.sub(r"([\\`*_{}\[\]<>#|~])", r"\\\1", texto)
 
 
 class _SemResultado(Exception):
@@ -175,18 +182,14 @@ if resultado := st.session_state.get("mapa_ubs"):
     for posicao, ubs in enumerate(registros, start=1):
         detalhe = detalhes.get(ubs["cnes"]) or {}
         with st.container(border=True):
-            st.markdown(f"**{posicao}. {nomes[ubs['cnes']]}**")
-            st.caption(geo.descrever_distancia(ubs, modo))
-            endereco = geo.texto(detalhe.get("endereco")) or geo.texto(ubs["logradouro"])
-            bairro = geo.texto(detalhe.get("bairro")) or geo.texto(ubs["bairro"])
-            if local := ", ".join(p for p in (endereco, bairro) if p):
-                st.write(local)
-            if detalhe.get("telefone"):
-                st.write(f"Telefone: {detalhe['telefone']}")
-            if detalhe.get("email"):
-                st.write(f"E-mail: {detalhe['email'].lower()}")
-            if detalhe.get("turno"):
-                st.write(detalhe["turno"].capitalize())
+            st.markdown(f"**{posicao}. {_sem_markdown(nomes[ubs['cnes']])}**")
+            # Dois espaços antes da quebra ("  \n") fazem o Markdown mudar de linha.
+            st.markdown(
+                "  \n".join(
+                    f"**{rotulo}:** {_sem_markdown(valor)}"
+                    for rotulo, valor in geo.campos_unidade(ubs, detalhe, modo)
+                )
+            )
             if ubs["coordenada_aproximada"]:
                 st.caption("A posição desta unidade no mapa é aproximada.")
             if not detalhe:

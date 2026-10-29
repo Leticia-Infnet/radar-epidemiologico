@@ -263,6 +263,40 @@ def test_formatar_duracao(segundos, esperado):
     assert geo.formatar_duracao(segundos) == esperado
 
 
+def test_campos_unidade_na_ordem_e_sem_vazios():
+    ubs = {
+        "distancia_km": 0.42,
+        "distancia_rota_m": 650.0,
+        "duracao_rota_s": 480.0,
+        "logradouro": "RUA A",
+        "bairro": float("nan"),
+    }
+    detalhe = {
+        "endereco": "AV MARIO MELO, 27",
+        "bairro": "BONSUCESSO",
+        "turno": "ATENDIMENTOS NOS TURNOS DA MANHA E A TARDE",
+        "telefone": None,
+        "email": "USF@OLINDA.PE.GOV.BR",
+    }
+    assert geo.campos_unidade(ubs, detalhe) == [
+        ("Trajeto", "650 m a pé (8 min) · 420 m em linha reta"),
+        ("Endereço", "AV MARIO MELO, 27, BONSUCESSO"),
+        ("Turno", "Atendimentos nos turnos da manha e a tarde"),
+        ("E-mail", "usf@olinda.pe.gov.br"),
+    ]
+    # Sem CNES, o endereço vem do cadastro do Hub.
+    assert geo.campos_unidade(ubs, None)[1] == ("Endereço", "RUA A")
+
+
+def test_popup_tem_campos_rotulados():
+    proximas = ubs_mais_proximas(construir_indice(UBS), UBS, -23.0, -46.0, k=1)
+    html = mapa_ubs(ORIGEM, proximas, {"0000001": {"turno": "MANHA"}}).get_root().render()
+    assert (
+        "<b>1. UBS SAO PAULO</b><br><b>Trajeto:</b> 89,1 km em linha reta"
+        "<br><b>Endereço:</b> RUA A, CENTRO<br><b>Turno:</b> Manha</div>"
+    ) in html
+
+
 def test_descrever_distancia():
     sem_rota = {"distancia_km": 0.42, "distancia_rota_m": float("nan")}
     assert geo.descrever_distancia(sem_rota) == "420 m em linha reta"

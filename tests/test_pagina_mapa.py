@@ -57,6 +57,7 @@ def test_busca_ordena_a_pe_e_mostra_rota(sem_rede, monkeypatch):
     assert "Rua Teste, Recife, PE" in textos
     assert app.radio[0].value == "a_pe"
     assert app.radio[1].value == "0000002"
+    assert "**Trajeto:** 900 m a pé (12 min)" in textos
     legendas = " ".join(c.value for c in app.caption)
     assert "Caminho a pé: 900 m, cerca de 12 min" in legendas
 

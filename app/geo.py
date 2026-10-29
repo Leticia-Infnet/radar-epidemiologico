@@ -359,23 +359,43 @@ ATRIBUICAO = (
 )
 
 
-def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, modo: str) -> str:
+def campos_unidade(
+    ubs: dict[str, Any], detalhe: dict[str, Any] | None, modo: str = "a_pe"
+) -> list[tuple[str, str]]:
+    """Pares (rótulo, valor) exibidos no popup e no card, na mesma ordem nos dois.
+
+    Campos sem valor ficam de fora. O CNES consultado ao vivo tem prioridade sobre o
+    cadastro de UBS do Hub.
+    """
     detalhe = detalhe or {}
-    linhas = [
-        f"<b>{posicao}. {html.escape(texto(detalhe.get('nome')) or texto(ubs['nome']))}</b>",
-        html.escape(descrever_distancia(ubs, modo)),
-        html.escape(texto(detalhe.get("endereco")) or texto(ubs.get("logradouro"))),
-        html.escape(texto(detalhe.get("bairro")) or texto(ubs.get("bairro"))),
+    endereco = ", ".join(
+        p
+        for p in (
+            texto(detalhe.get("endereco")) or texto(ubs.get("logradouro")),
+            texto(detalhe.get("bairro")) or texto(ubs.get("bairro")),
+        )
+        if p
+    )
+    campos = [
+        ("Trajeto", descrever_distancia(ubs, modo)),
+        ("Endereço", endereco),
+        ("Turno", texto(detalhe.get("turno")).capitalize()),
+        ("Telefone", texto(detalhe.get("telefone"))),
+        ("E-mail", texto(detalhe.get("email")).lower()),
     ]
-    if detalhe.get("telefone"):
-        linhas.append(f"Telefone: {html.escape(detalhe['telefone'])}")
-    if detalhe.get("email"):
-        linhas.append(f"E-mail: {html.escape(detalhe['email'].lower())}")
-    if detalhe.get("turno"):
-        linhas.append(html.escape(detalhe["turno"].capitalize()))
+    return [(rotulo, valor) for rotulo, valor in campos if valor]
+
+
+def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, modo: str) -> str:
+    nome = texto((detalhe or {}).get("nome")) or texto(ubs["nome"])
+    linhas = [f"<b>{posicao}. {html.escape(nome)}</b>"]
+    linhas += [
+        f"<b>{rotulo}:</b> {html.escape(valor)}"
+        for rotulo, valor in campos_unidade(ubs, detalhe, modo)
+    ]
     if ubs.get("coordenada_aproximada"):
         linhas.append("<i>Localização aproximada no mapa.</i>")
-    return "<br>".join(linha for linha in linhas if linha)
+    return "<br>".join(linhas)
 
 
 def mapa_ubs(
