@@ -47,3 +47,16 @@ def test_detalhe_cnes_real():
     detalhe = detalhar_estabelecimento("0000302")
     assert detalhe is not None
     assert detalhe["cnes"] == "0000302"
+
+
+def test_rota_a_pe_real():
+    from app.geo import Localizacao, distancias_a_pe, rota_a_pe
+
+    origem = Localizacao(-8.00889, -34.85528, "teste", "")
+    destino = (-8.0105, -34.8545)
+    [a_pe] = distancias_a_pe(origem, [destino])
+    rota = rota_a_pe(origem, *destino)
+    assert a_pe is not None and rota is not None
+    assert rota.distancia_m == pytest.approx(a_pe[0], rel=0.05)
+    # Perfil a pé: bem mais lento que carro (cerca de 5 km/h).
+    assert rota.duracao_s > rota.distancia_m / 2

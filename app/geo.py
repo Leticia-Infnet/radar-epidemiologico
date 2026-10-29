@@ -2,6 +2,7 @@
 
 import html
 import logging
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -186,19 +187,144 @@ def detalhar_estabelecimento(
     }
 
 
+@dataclass(frozen=True)
+class Rota:
+    """Trajeto a pé calculado pelo OSRM da FOSSGIS sobre dados do OpenStreetMap."""
+
+    distancia_m: float
+    duracao_s: float
+    trajeto: tuple[tuple[float, float], ...]  # pares (lat, lon)
+
+
+def _pontos_osrm(*pontos: tuple[float, float]) -> str:
+    # O OSRM recebe longitude antes de latitude.
+    return ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in pontos)
+
+
+def _cliente_osrm(s: Settings) -> httpx.Client:
+    # Política da FOSSGIS: User-Agent válido, até 1 req/s, sem uso pesado. A página
+    # faz duas chamadas por busca (table + route), ambas em cache.
+    return httpx.Client(
+        base_url=s.osrm_foot_url, timeout=TIMEOUT_S, headers={"User-Agent": s.user_agent}
+    )
+
+
+def distancias_a_pe(
+    origem: Localizacao,
+    destinos: list[tuple[float, float]],
+    cliente: httpx.Client | None = None,
+    settings: Settings | None = None,
+) -> list[tuple[float, float] | None]:
+    """Distância (m) e tempo (s) a pé até cada destino, numa única requisição `table`.
+
+    Devolve None na posição de um destino sem rota, e só Nones se o serviço falhar.
+    """
+    s = settings or get_settings()
+    vazio: list[tuple[float, float] | None] = [None] * len(destinos)
+    caminho = "/table/v1/foot/" + _pontos_osrm((origem.latitude, origem.longitude), *destinos)
+    try:
+        with cliente or _cliente_osrm(s) as c:
+            r = c.get(caminho, params={"sources": "0", "annotations": "distance,duration"})
+        d = r.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("OSRM table indisponível: %s", exc)
+        return vazio
+    if r.status_code != 200 or d.get("code") != "Ok":
+        return vazio
+    distancias, duracoes = d["distances"][0][1:], d["durations"][0][1:]
+    return [
+        (dist, dur) if dist is not None and dur is not None else None
+        for dist, dur in zip(distancias, duracoes, strict=True)
+    ]
+
+
+def rota_a_pe(
+    origem: Localizacao,
+    lat: float,
+    lon: float,
+    cliente: httpx.Client | None = None,
+    settings: Settings | None = None,
+) -> Rota | None:
+    """Trajeto a pé da origem até o ponto; None se o serviço falhar ou não houver rota."""
+    s = settings or get_settings()
+    caminho = "/route/v1/foot/" + _pontos_osrm((origem.latitude, origem.longitude), (lat, lon))
+    try:
+        with cliente or _cliente_osrm(s) as c:
+            r = c.get(caminho, params={"overview": "full", "geometries": "geojson"})
+        d = r.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("OSRM route indisponível: %s", exc)
+        return None
+    if r.status_code != 200 or d.get("code") != "Ok" or not d.get("routes"):
+        return None
+    rota = d["routes"][0]
+    trajeto = tuple((lat_, lon_) for lon_, lat_ in rota["geometry"]["coordinates"])
+    return Rota(rota["distance"], rota["duration"], trajeto)
+
+
+def formatar_distancia(metros: float) -> str:
+    """`650 m` abaixo de 1 km; `1,2 km` acima, com vírgula decimal."""
+    arredondado = round(metros, -1)
+    if arredondado < 1000:
+        return f"{arredondado:.0f} m"
+    return f"{metros / 1000:.1f} km".replace(".", ",")
+
+
+def formatar_duracao(segundos: float) -> str:
+    """Minutos arredondados para cima; `1 h 05 min` a partir de uma hora."""
+    minutos = max(1, math.ceil(segundos / 60))
+    if minutos < 60:
+        return f"{minutos} min"
+    return f"{minutos // 60} h {minutos % 60:02d} min"
+
+
+def _tem_rota(ubs: dict[str, Any]) -> bool:
+    a_pe = ubs.get("distancia_pe_m")
+    return a_pe is not None and not pd.isna(a_pe)
+
+
+def _linha_reta(ubs: dict[str, Any]) -> str:
+    return f"{formatar_distancia(ubs['distancia_km'] * 1000)} em linha reta"
+
+
+def distancia_resumida(ubs: dict[str, Any]) -> str:
+    """`650 m a pé (8 min)` quando há rota; senão, a distância em linha reta."""
+    if not _tem_rota(ubs):
+        return _linha_reta(ubs)
+    return (
+        f"{formatar_distancia(ubs['distancia_pe_m'])} a pé "
+        f"({formatar_duracao(ubs['duracao_pe_s'])})"
+    )
+
+
+def descrever_distancia(ubs: dict[str, Any]) -> str:
+    """`650 m a pé (8 min) · 0,4 km em linha reta`, ou só a linha reta sem rota."""
+    if not _tem_rota(ubs):
+        return _linha_reta(ubs)
+    return f"{distancia_resumida(ubs)} · {_linha_reta(ubs)}"
+
+
 def link_rota(origem: Localizacao, lat: float, lon: float) -> str:
-    """Rota a pé no OpenStreetMap, da origem até a unidade."""
+    """Rota a pé no site do OpenStreetMap, usada quando o cálculo no app falha."""
     return (
         "https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot"
         f"&route={origem.latitude:.5f}%2C{origem.longitude:.5f}%3B{lat:.5f}%2C{lon:.5f}"
     )
 
 
+ATRIBUICAO = (
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
+    '&copy; <a href="https://carto.com/attributions">CARTO</a> · '
+    'Rotas: <a href="https://routing.openstreetmap.de/">FOSSGIS</a> · '
+    '<a href="https://www.openstreetmap.org/fixthemap">Corrigir o mapa</a>'
+)
+
+
 def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None) -> str:
     detalhe = detalhe or {}
     linhas = [
         f"<b>{posicao}. {html.escape(texto(detalhe.get('nome')) or texto(ubs['nome']))}</b>",
-        f"{ubs['distancia_km']:.1f} km em linha reta",
+        html.escape(descrever_distancia(ubs)),
         html.escape(texto(detalhe.get("endereco")) or texto(ubs.get("logradouro"))),
         html.escape(texto(detalhe.get("bairro")) or texto(ubs.get("bairro"))),
     ]
@@ -216,9 +342,27 @@ def mapa_ubs(
     origem: Localizacao,
     proximas: pd.DataFrame,
     detalhes: dict[str, dict[str, Any] | None],
+    rota: Rota | None = None,
+    destino: str | None = None,
 ) -> folium.Map:
-    """Mapa OpenStreetMap com a origem e as UBS numeradas por proximidade."""
-    mapa = folium.Map(location=[origem.latitude, origem.longitude], tiles="OpenStreetMap")
+    """Mapa claro (CARTO Positron) com a origem, as UBS numeradas e a rota a pé.
+
+    `destino` é o CNES da UBS da rota, destacada em verde.
+    """
+    mapa = folium.Map(
+        location=[origem.latitude, origem.longitude],
+        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attr=ATRIBUICAO,
+    )
+    if rota:
+        folium.PolyLine(
+            rota.trajeto,
+            color="#1d4ed8",
+            weight=5,
+            opacity=0.85,
+            tooltip=f"{formatar_distancia(rota.distancia_m)} a pé, "
+            f"cerca de {formatar_duracao(rota.duracao_s)}",
+        ).add_to(mapa)
     folium.Marker(
         [origem.latitude, origem.longitude],
         tooltip="Seu CEP",
@@ -226,18 +370,19 @@ def mapa_ubs(
         icon=folium.Icon(color="red", icon="home", prefix="fa"),
     ).add_to(mapa)
     for posicao, ubs in enumerate(proximas.to_dict("records"), start=1):
+        if ubs["cnes"] == destino:
+            cor = "green"
+        else:
+            cor = "orange" if ubs["coordenada_aproximada"] else "blue"
         folium.Marker(
             [ubs["latitude"], ubs["longitude"]],
-            tooltip=f"{posicao}. {ubs['nome']} ({ubs['distancia_km']:.1f} km)",
+            tooltip=f"{posicao}. {ubs['nome']}",
             popup=folium.Popup(_popup(posicao, ubs, detalhes.get(ubs["cnes"])), max_width=300),
-            icon=folium.Icon(
-                color="orange" if ubs["coordenada_aproximada"] else "blue",
-                icon="plus-square",
-                prefix="fa",
-            ),
+            icon=folium.Icon(color=cor, icon="plus-square", prefix="fa"),
         ).add_to(mapa)
-    pontos = [[origem.latitude, origem.longitude]] + proximas[
-        ["latitude", "longitude"]
-    ].values.tolist()
+    pontos = [[origem.latitude, origem.longitude]]
+    pontos += proximas[["latitude", "longitude"]].values.tolist()
+    if rota:
+        pontos += [list(p) for p in rota.trajeto]
     mapa.fit_bounds(pontos, padding=(30, 30))
     return mapa
