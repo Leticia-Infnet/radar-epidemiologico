@@ -50,6 +50,18 @@ Os grupos `rag` e `indexacao` puxam torch e Docling e ficam fora do padrão:
 Copie `.env.example` para `.env` e preencha os segredos. No GitHub, cadastre
 `RADAR_HF_TOKEN` em *Secrets* e `RADAR_HF_DATASET_REPO` em *Variables*.
 
+## ETL
+
+```bash
+uv run python -m etl.pipeline municipios ubs --sem-publicar   # extrai e valida
+uv run pytest -m integracao                                   # testes contra as APIs reais
+```
+
+A publicação no Hub é feita pelo workflow `etl` (*Actions → etl → Run workflow*), que
+envia cada tabela para `<RADAR_HF_DATASET_REPO>/<tabela>/` com um `metadados.json`.
+Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
+publicados.
+
 ## Deploy
 
 A aplicação roda no [Streamlit Community Cloud](https://share.streamlit.io), ligada a

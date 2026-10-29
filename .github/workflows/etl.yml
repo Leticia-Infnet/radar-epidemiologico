@@ -6,6 +6,10 @@ on:
       etapas:
         description: "Etapas separadas por espaço: municipios ubs arboviroses"
         default: "municipios ubs"
+      sem_publicar:
+        description: "Só extrair e validar, sem publicar no Hub"
+        type: boolean
+        default: false
   # Habilitar quando as etapas estiverem implementadas.
   # schedule:
   #   - cron: "0 6 * * 1"  # segundas, 03h de Brasília
@@ -21,4 +25,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group etl --no-default-groups
-      - run: uv run python -m etl.pipeline ${{ inputs.etapas || 'municipios ubs arboviroses' }}
+      - run: uv run python -m etl.pipeline ${{ inputs.etapas || 'municipios ubs arboviroses' }} ${{ inputs.sem_publicar && '--sem-publicar' || '' }}

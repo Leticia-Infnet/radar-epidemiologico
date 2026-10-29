@@ -16,6 +16,8 @@ class UBS(pa.DataFrameModel):
     bairro: str = pa.Field(nullable=True)
     latitude: float = pa.Field(ge=LAT_MIN, le=LAT_MAX)
     longitude: float = pa.Field(ge=LON_MIN, le=LON_MAX)
+    # Até 2 casas decimais (precisão de cerca de 1 km).
+    coordenada_aproximada: bool
 
 
 class Municipio(pa.DataFrameModel):

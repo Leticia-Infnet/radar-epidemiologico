@@ -13,6 +13,7 @@ UBS_VALIDA = {
     "bairro": [None],
     "latitude": [-8.21811],
     "longitude": [-35.22944],
+    "coordenada_aproximada": [False],
 }
 
 
