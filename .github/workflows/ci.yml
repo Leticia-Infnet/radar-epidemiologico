@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# O `uv sync` de cada job instala só os grupos necessários; sem isto, o `uv run`
+# sincronizaria de novo os grupos padrão (Jupyter, matplotlib) a cada execução.
+env:
+  UV_NO_SYNC: "1"
+
 jobs:
   qualidade:
     runs-on: ubuntu-latest

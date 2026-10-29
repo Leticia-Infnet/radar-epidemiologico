@@ -59,6 +59,15 @@ uv run pytest -m integracao                                   # testes contra as
 
 A publicação no Hub é feita pelo workflow `etl` (*Actions → etl → Run workflow*), que
 envia cada tabela para `<RADAR_HF_DATASET_REPO>/<tabela>/` com um `metadados.json`.
+
+O dicionário de municípios é a exceção: a API do IBGE recusa conexões vindas do GitHub
+Actions, então essa etapa roda de uma máquina no Brasil, com `RADAR_HF_TOKEN` (escrita)
+no `.env`. Só é preciso repetir quando o IBGE criar ou alterar municípios:
+
+```bash
+uv run python -m etl.pipeline municipios
+```
+
 Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
 publicados.
 

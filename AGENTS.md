@@ -111,8 +111,16 @@ Exemplo de payload de UBS:
 
 `https://servicodados.ibge.gov.br/api/v1/localidades/municipios`
 
-Retorna os 5.570 municípios com código e nome. Usar para montar o dicionário
+Retorna os municípios com código e nome (5.571 em 2026-10). Usar para montar o dicionário
 código ↔ nome do dropdown. **Não hardcode a lista** — materialize em Parquet no ETL.
+
+**A API do IBGE recusa conexões do GitHub Actions** (timeout de conexão, verificado em
+2026-10-28; a DEMAS responde normalmente no mesmo runner). Por isso a etapa `municipios`
+roda manualmente de uma máquina no Brasil e publica no Hub; o ETL agendado não a inclui.
+O dicionário só muda quando surge ou muda um município. A DEMAS tem um endpoint
+alternativo, `/macrorregiao-e-regiao-de-saude/municipio`, acessível do CI, mas com nomes
+sem acento, sem o código de 7 dígitos e sem Boa Esperança do Norte (MT); em troca, traz
+população de 2022 e região de saúde, úteis para calcular incidência.
 
 ### 4.3 Geocodificação de CEP
 

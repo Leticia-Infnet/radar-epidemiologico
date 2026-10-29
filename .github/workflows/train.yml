@@ -6,6 +6,11 @@ on:
   # schedule:
   #   - cron: "0 12 * * 1"
 
+# O `uv sync` de cada job instala só os grupos necessários; sem isto, o `uv run`
+# sincronizaria de novo os grupos padrão (Jupyter, matplotlib) a cada execução.
+env:
+  UV_NO_SYNC: "1"
+
 jobs:
   treino:
     runs-on: ubuntu-latest
