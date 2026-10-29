@@ -183,9 +183,10 @@ if resultado := st.session_state.get("mapa_ubs"):
         detalhe = detalhes.get(ubs["cnes"]) or {}
         with st.container(border=True):
             st.markdown(f"**{posicao}. {_sem_markdown(nomes[ubs['cnes']])}**")
-            # Dois espaços antes da quebra ("  \n") fazem o Markdown mudar de linha.
+            # Uma linha em branco entre os campos ("\n\n") faz de cada um um parágrafo,
+            # com espaço entre eles.
             st.markdown(
-                "  \n".join(
+                "\n\n".join(
                     f"**{rotulo}:** {_sem_markdown(valor)}"
                     for rotulo, valor in geo.campos_unidade(ubs, detalhe, modo)
                 )
