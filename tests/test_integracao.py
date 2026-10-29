@@ -31,3 +31,19 @@ async def test_pagina_de_ubs_normaliza():
     tabela, descartes = normalizar_ubs(registros)
     assert tabela.height + sum(descartes.values()) == len(registros)
     assert tabela.height > 0.8 * len(registros)
+
+
+def test_geocodifica_cep_real():
+    from app.geo import geocodificar_cep
+
+    local = geocodificar_cep("53020-140")  # Olinda (PE)
+    assert -8.1 < local.latitude < -7.9
+    assert -34.95 < local.longitude < -34.8
+
+
+def test_detalhe_cnes_real():
+    from app.geo import detalhar_estabelecimento
+
+    detalhe = detalhar_estabelecimento("0000302")
+    assert detalhe is not None
+    assert detalhe["cnes"] == "0000302"
