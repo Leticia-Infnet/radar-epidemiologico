@@ -179,6 +179,8 @@ def test_mapa_tem_origem_e_ubs_e_escapa_html():
     assert "<script>alert(1)</script>" not in html
     assert "Localização aproximada" in html
     assert "L.polyline(" not in html
+    assert "CNES" not in html
+    assert not any(cnes in html for cnes in UBS["cnes"])
 
 
 def test_mapa_usa_tiles_sem_chave_com_filtro_e_atribuicao():
@@ -189,6 +191,7 @@ def test_mapa_usa_tiles_sem_chave_com_filtro_e_atribuicao():
     assert '"className": "mapa-base-suave"' in html
     assert ".mapa-base-suave { filter:" in html
     assert "fixthemap" in html
+    assert ".leaflet-popup-content { font-size: 15px;" in html
 
 
 @pytest.mark.parametrize(("modo", "cor"), [("a_pe", "#1d4ed8"), ("carro", "#7c3aed")])

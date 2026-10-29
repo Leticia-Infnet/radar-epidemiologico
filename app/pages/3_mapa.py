@@ -13,6 +13,18 @@ AVISOS = {
 }
 
 
+# Fonte maior que o padrão do Streamlit em toda a página, exceto o título. Uma tag
+# <style> sozinha no st.html não ocupa espaço na página.
+ESTILO_PAGINA = """
+<style>
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li { font-size: 1.15rem !important; }
+[data-testid="stCaptionContainer"] p { font-size: 1.05rem !important; }
+[data-testid="stTextInputRootElement"] input { font-size: 1.15rem !important; }
+</style>
+"""
+
+
 class _SemResultado(Exception):
     """Sinaliza falha sem deixar o st.cache_data guardar o resultado vazio."""
 
@@ -82,6 +94,7 @@ def _ordenar(origem: geo.Localizacao, proximas: pd.DataFrame, modo: str) -> pd.D
     ).reset_index(drop=True)
 
 
+st.html(ESTILO_PAGINA)
 st.title("Unidades básicas de saúde mais próximas")
 st.caption("Informe o CEP para ver no mapa as UBS mais próximas e o caminho até elas.")
 

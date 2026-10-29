@@ -344,8 +344,13 @@ def link_rota(origem: Localizacao, lat: float, lon: float, modo: str = "a_pe") -
 # rota e marcadores ficam com as cores originais.
 TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 CLASSE_BASE = "mapa-base-suave"
-ESTILO_BASE = (
-    f"<style>.{CLASSE_BASE} {{ filter: saturate(0.25) contrast(0.85) brightness(1.06); }}</style>"
+ESTILO_MAPA = (
+    "<style>"
+    f".{CLASSE_BASE} {{ filter: saturate(0.25) contrast(0.85) brightness(1.06); }}"
+    # O Leaflet usa 12 a 13 px em popups e dicas; pequeno demais para leitura confortável.
+    ".leaflet-popup-content { font-size: 15px; line-height: 1.45; }"
+    ".leaflet-tooltip { font-size: 14px; }"
+    "</style>"
 )
 ATRIBUICAO = (
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · '
@@ -368,7 +373,6 @@ def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, mo
         linhas.append(html.escape(detalhe["turno"].capitalize()))
     if ubs.get("coordenada_aproximada"):
         linhas.append("<i>Localização aproximada no mapa.</i>")
-    linhas.append(f"CNES {html.escape(ubs['cnes'])}")
     return "<br>".join(linha for linha in linhas if linha)
 
 
@@ -386,7 +390,7 @@ def mapa_ubs(
     """
     mapa = folium.Map(location=[origem.latitude, origem.longitude], tiles=None)
     folium.TileLayer(TILES, attr=ATRIBUICAO, max_zoom=19, class_name=CLASSE_BASE).add_to(mapa)
-    mapa.get_root().header.add_child(folium.Element(ESTILO_BASE))
+    mapa.get_root().header.add_child(folium.Element(ESTILO_MAPA))
     if rota:
         folium.PolyLine(
             rota.trajeto,
