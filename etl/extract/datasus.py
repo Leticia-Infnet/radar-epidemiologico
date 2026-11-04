@@ -86,6 +86,21 @@ _tentar_de_novo = retry(
 )
 
 
+# Num download, o progresso fica salvo entre as tentativas (retomada com REST), então
+# vale insistir mais: o DENGBR24 (288 MB) caiu a cada 5 a 7 minutos no Actions.
+_tentar_download = retry(
+    retry=retry_if_exception_type((ftplib.Error, OSError, EOFError)),
+    stop=stop_after_attempt(15),
+    wait=wait_exponential(multiplier=10, max=120),
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+)
+
+
+class DownloadIncompleto(OSError):
+    """O arquivo local terminou com tamanho diferente do informado pelo FTP."""
+
+
 @contextmanager
 def _conexao(settings: Settings) -> Iterator[ftplib.FTP]:
     """Conexão anônima, com timeout curto para conectar e longo para transferir.
@@ -112,13 +127,30 @@ def _listar(diretorios: tuple[str, ...], settings: Settings) -> list[list[str]]:
         return [ftp.nlst(d) for d in diretorios]
 
 
-@_tentar_de_novo
+@_tentar_download
 def _baixar(caminho_remoto: str, destino: Path, settings: Settings) -> datetime:
-    """Baixa o arquivo e devolve a data de modificação no FTP, numa só conexão."""
-    with _conexao(settings) as ftp, destino.open("wb") as arquivo:
+    """Baixa o arquivo e devolve a data de modificação no FTP.
+
+    O servidor do DATASUS derruba conexões no meio de downloads longos. Cada nova
+    tentativa continua do último byte recebido (comando REST), em vez de recomeçar, e o
+    tamanho final é conferido com o informado pelo servidor (SIZE).
+    """
+    with _conexao(settings) as ftp:
         # Resposta no formato "213 AAAAMMDDhhmmss", em UTC.
         resposta = ftp.voidcmd(f"MDTM {caminho_remoto}")
-        ftp.retrbinary(f"RETR {caminho_remoto}", arquivo.write)
+        tamanho = ftp.size(caminho_remoto)
+        recebido = destino.stat().st_size if destino.exists() else 0
+        if recebido > tamanho:  # o arquivo mudou no servidor entre as tentativas
+            destino.unlink()
+            recebido = 0
+        if recebido:
+            log.info("%s: retomando a partir de %.1f MB.", destino.name, recebido / 1e6)
+        if recebido < tamanho:
+            with destino.open("ab") as arquivo:
+                ftp.retrbinary(f"RETR {caminho_remoto}", arquivo.write, rest=recebido or None)
+    final = destino.stat().st_size
+    if final != tamanho:
+        raise DownloadIncompleto(f"{caminho_remoto}: {final} de {tamanho} bytes.")
     return datetime.strptime(resposta.split()[1][:14], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
 
 

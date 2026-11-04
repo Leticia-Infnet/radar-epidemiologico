@@ -1,10 +1,13 @@
 import struct
+from contextlib import contextmanager
 from datetime import date
 
 import polars as pl
 import pytest
 
+from common.config import Settings
 from etl import pipeline
+from etl.extract import datasus
 from etl.extract.datasus import ArquivoSinan, escolher_arquivos_sinan, ler_colunas_dbf
 from etl.transform.aggregate import (
     CAMPOS_SINAN,
@@ -236,3 +239,42 @@ def test_arboviroses_grava_particoes_por_uf(monkeypatch, tmp_path):
     assert metadados["dengue"]["ultima_semana"] == "2026-05"
     assert metadados["dengue"]["corte"] == "2026-02-01"
     assert metadados["dengue"]["arquivos"]["DENGBR26.dbc"]["preliminar"] is True
+
+
+class _FtpQueCai:
+    """FTP simulado que derruba a conexão depois de alguns bytes, como o do DATASUS."""
+
+    def __init__(self, conteudo: bytes, quedas: int, bytes_por_conexao: int):
+        self.conteudo, self.quedas, self.por_conexao = conteudo, quedas, bytes_por_conexao
+        self.retomadas: list[int | None] = []
+
+    def voidcmd(self, comando):
+        return "213 20261027101500"
+
+    def size(self, caminho):
+        return len(self.conteudo)
+
+    def retrbinary(self, comando, callback, rest=None):
+        self.retomadas.append(rest)
+        inicio = rest or 0
+        if self.quedas:
+            self.quedas -= 1
+            callback(self.conteudo[inicio : inicio + self.por_conexao])
+            raise ConnectionResetError(104, "Connection reset by peer")
+        callback(self.conteudo[inicio:])
+
+
+def test_baixar_retoma_de_onde_parou(monkeypatch, tmp_path):
+    ftp = _FtpQueCai(bytes(range(256)) * 40, quedas=3, bytes_por_conexao=1000)
+
+    @contextmanager
+    def conexao(settings):
+        yield ftp
+
+    monkeypatch.setattr(datasus, "_conexao", conexao)
+    monkeypatch.setattr(datasus._baixar.retry, "sleep", lambda _: None)
+    destino = tmp_path / "DENGBR24.dbc"
+    publicado = datasus._baixar("/FINAIS/DENGBR24.dbc", destino, Settings())
+    assert destino.read_bytes() == ftp.conteudo
+    assert ftp.retomadas == [None, 1000, 2000, 3000]
+    assert publicado.isoformat() == "2026-10-27T10:15:00+00:00"
