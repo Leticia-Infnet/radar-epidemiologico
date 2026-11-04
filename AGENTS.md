@@ -426,6 +426,7 @@ metadados.
 | `uv run` no CI ressincroniza os grupos padrão por cima do `uv sync --group ...` | `UV_NO_SYNC=1` nos workflows |
 | Arquivos de dengue do SINAN no FTP não trazem os casos descartados | A série é de casos prováveis; notificações totais só pela DEMAS |
 | O arquivo preliminar do SINAN é publicado dias depois do corte real dos dados: as últimas semanas chegam quase vazias | Marcar as últimas semanas antes da publicação como incompletas (`aggregate.SEMANAS_INCOMPLETAS`) |
+| O FTP do DATASUS recusou conexões (timeout) por mais de 10 minutos a partir do Actions em 2026-11-04, depois de aceitar a primeira | `datasus._conexao` conecta com timeout de 30 s; 7 tentativas com espera de até 2 min; uma conexão por arquivo |
 | `dbfread` lê cerca de 75 µs por registro; a dengue de 2024 tem mais de 6 milhões | Recortar só os campos usados com NumPy (`datasus.ler_colunas_dbf`) |
 | `/macrorregiao-e-regiao-de-saude/municipio` devolve no máximo 860 registros por página, mesmo com `limit=1000`, e o cliente tomava a página curta pela última | `DemasClient.todos(..., tamanho_pagina=500)`; o piso de linhas pegou o erro |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |

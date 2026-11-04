@@ -18,6 +18,7 @@ import re
 import tempfile
 import zipfile
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,7 +27,13 @@ import datasus_dbc
 import dbfread
 import numpy as np
 import polars as pl
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from common.config import Settings, get_settings
 
@@ -67,38 +74,52 @@ _ARQUIVO_PF = re.compile(r"^PF([A-Z]{2})(\d{4})\.dbc$", re.IGNORECASE)
 # mesmo pacote vem sem acentos.
 _TABELAS_CBO = ("DBF/CBO_02.dbf", "DBF/CBO_FAM.dbf")
 
+# O FTP do DATASUS já recusou conexões por mais de 10 minutos seguidos a partir do
+# GitHub Actions (2026-11-04) e voltou a responder logo depois. As tentativas cobrem
+# cerca de 8 minutos de espera, além do tempo de cada tentativa.
 _tentar_de_novo = retry(
     retry=retry_if_exception_type((ftplib.Error, OSError, EOFError)),
-    stop=stop_after_attempt(4),
-    wait=wait_exponential(multiplier=5, max=60),
+    stop=stop_after_attempt(7),
+    wait=wait_exponential(multiplier=10, max=120),
+    before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
 )
 
 
-@_tentar_de_novo
-def _listar(diretorio: str, settings: Settings) -> list[str]:
-    with ftplib.FTP(settings.datasus_ftp_host, timeout=settings.datasus_ftp_timeout_s) as ftp:
+@contextmanager
+def _conexao(settings: Settings) -> Iterator[ftplib.FTP]:
+    """Conexão anônima, com timeout curto para conectar e longo para transferir.
+
+    Um servidor que não responde falha em segundos e dá lugar à próxima tentativa, sem
+    cortar o download de um arquivo grande.
+    """
+    ftp = ftplib.FTP()
+    ftp.connect(settings.datasus_ftp_host, timeout=settings.datasus_ftp_connect_timeout_s)
+    try:
+        # O ftplib usa `timeout` também nas conexões de dados de cada transferência.
+        ftp.timeout = settings.datasus_ftp_timeout_s
+        ftp.sock.settimeout(settings.datasus_ftp_timeout_s)
         ftp.login()
-        return ftp.nlst(diretorio)
+        yield ftp
+    finally:
+        ftp.close()
 
 
 @_tentar_de_novo
-def _data_de_modificacao(caminho_remoto: str, settings: Settings) -> datetime:
-    with ftplib.FTP(settings.datasus_ftp_host, timeout=settings.datasus_ftp_timeout_s) as ftp:
-        ftp.login()
+def _listar(diretorios: tuple[str, ...], settings: Settings) -> list[list[str]]:
+    """Lista várias pastas numa só conexão."""
+    with _conexao(settings) as ftp:
+        return [ftp.nlst(d) for d in diretorios]
+
+
+@_tentar_de_novo
+def _baixar(caminho_remoto: str, destino: Path, settings: Settings) -> datetime:
+    """Baixa o arquivo e devolve a data de modificação no FTP, numa só conexão."""
+    with _conexao(settings) as ftp, destino.open("wb") as arquivo:
         # Resposta no formato "213 AAAAMMDDhhmmss", em UTC.
         resposta = ftp.voidcmd(f"MDTM {caminho_remoto}")
-    return datetime.strptime(resposta.split()[1][:14], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
-
-
-@_tentar_de_novo
-def _baixar(caminho_remoto: str, destino: Path, settings: Settings) -> None:
-    with (
-        ftplib.FTP(settings.datasus_ftp_host, timeout=settings.datasus_ftp_timeout_s) as ftp,
-        destino.open("wb") as arquivo,
-    ):
-        ftp.login()
         ftp.retrbinary(f"RETR {caminho_remoto}", arquivo.write)
+    return datetime.strptime(resposta.split()[1][:14], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
 
 
 def competencia_completa(nomes: list[str], ufs: tuple[str, ...] = UFS) -> str:
@@ -122,7 +143,7 @@ def competencia_completa(nomes: list[str], ufs: tuple[str, ...] = UFS) -> str:
 def competencia_pf(settings: Settings | None = None) -> str:
     """Consulta o FTP e devolve a competência completa mais recente (`AAMM`)."""
     s = settings or get_settings()
-    return competencia_completa(_listar(s.datasus_cnes_pf_dir, s))
+    return competencia_completa(_listar((s.datasus_cnes_pf_dir,), s)[0])
 
 
 def ler_dbc(caminho: Path, campos: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
@@ -277,12 +298,8 @@ def arquivos_sinan(
 ) -> list[ArquivoSinan]:
     """Consulta as pastas `FINAIS` e `PRELIM` e escolhe um arquivo por ano."""
     s = settings or get_settings()
-    return escolher_arquivos_sinan(
-        _listar(s.datasus_sinan_finais_dir, s),
-        _listar(s.datasus_sinan_prelim_dir, s),
-        doenca,
-        ano_inicial,
-    )
+    finais, preliminares = _listar((s.datasus_sinan_finais_dir, s.datasus_sinan_prelim_dir), s)
+    return escolher_arquivos_sinan(finais, preliminares, doenca, ano_inicial)
 
 
 def ler_sinan(
@@ -294,9 +311,8 @@ def ler_sinan(
     só existe num diretório temporário enquanto é lido.
     """
     s = settings or get_settings()
-    publicado_em = _data_de_modificacao(arquivo.caminho, s)
     with tempfile.TemporaryDirectory() as tmp:
         local = Path(tmp) / Path(arquivo.caminho).name
-        _baixar(arquivo.caminho, local, s)
+        publicado_em = _baixar(arquivo.caminho, local, s)
         log.info("%s: %.1f MB baixados.", local.name, local.stat().st_size / 1e6)
         return ler_colunas_dbc(local, campos), publicado_em

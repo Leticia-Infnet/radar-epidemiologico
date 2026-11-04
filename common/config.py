@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     datasus_cnes_tabelas: str = "/dissemin/publicos/CNES/200508_/Auxiliar/TAB_CNES.zip"
     datasus_sinan_finais_dir: str = "/dissemin/publicos/SINAN/DADOS/FINAIS"
     datasus_sinan_prelim_dir: str = "/dissemin/publicos/SINAN/DADOS/PRELIM"
+    datasus_ftp_connect_timeout_s: float = 30.0
     datasus_ftp_timeout_s: float = 300.0
 
     ibge_municipios_url: str = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
