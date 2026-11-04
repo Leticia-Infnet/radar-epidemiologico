@@ -108,12 +108,14 @@ def test_cards_mostram_profissionais_de_saude(sem_rede, monkeypatch):
     assert not app.exception
     textos = " ".join(m.value for m in app.markdown)
     assert "**Profissionais de saúde**" in textos
-    assert "- **Médicos:** Médico \\<pediatra\\> (2), Médico clínico (1)" in textos
-    assert "- **Agentes de saúde:** Agente comunitário de saúde (8)" in textos
+    assert "- **Médicos:** Médico \\<pediatra\\>, Médico, Médico clínico\n" in textos
+    assert "estratégia" not in textos
+    assert "- **Agentes de saúde:** Agente comunitário de saúde" in textos
+    assert "(2)" not in textos
     legendas = " ".join(c.value for c in app.caption)
     # A UBS 0000003 não tem ninguém na tabela.
     assert "Nenhum profissional de saúde desta unidade consta no CNES." in legendas
-    assert "Profissionais cadastrados no CNES em 09/2026" in legendas
+    assert "Ocupações dos profissionais cadastrados no CNES em 09/2026" in legendas
 
 
 def test_mapa_funciona_sem_tabela_de_profissionais(sem_rede, monkeypatch):

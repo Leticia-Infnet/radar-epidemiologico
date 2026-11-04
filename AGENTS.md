@@ -341,9 +341,11 @@ OpenRouteService.
 - Só entram ocupações de atendimento, agrupadas em `etl/transform/cbo.py` por família da
   CBO: Médicos, Enfermagem, Saúde bucal, Equipe multiprofissional e Agentes de saúde.
   Esse módulo é Python puro porque o app o importa e o Polars não vai para o deploy.
-- No mapa, popup e card ganham a seção "Profissionais de saúde", com as ocupações de cada
-  grupo e a quantidade; a página informa a competência. Sem a tabela no Hub, o mapa
-  funciona como antes (`data.profissionais_ubs` devolve None).
+- No mapa, popup e card ganham a seção "Profissionais de saúde", com as ocupações
+  presentes em cada grupo, sem a quantidade e sem o sufixo "da estratégia de saúde da
+  família" (pedido da usuária: exibição resumida; a tabela guarda nomes e contagens
+  completos); a página informa a competência. Sem a tabela no Hub, o
+  mapa funciona como antes (`data.profissionais_ubs` devolve None).
 
 ### 7.4 Chatbot RAG
 
