@@ -320,27 +320,30 @@ def test_link_rota():
 
 EQUIPES = pd.DataFrame(
     {
-        "cnes": ["0000001"] * 4 + ["0000002"],
-        "grupo": ["Enfermagem", "Médicos", "Médicos", "Agentes de saúde", "Médicos"],
-        "cbo": ["223565", "225125", "225124", "515105", "225125"],
+        "cnes": ["0000001"] * 6 + ["0000002"],
+        "grupo": ["Enfermagem", "Enfermagem", "Médicos", "Médicos", "Agentes de saúde"]
+        + ["Médicos", "Médicos"],
+        "cbo": ["223505", "223565", "225125", "225124", "515105", "225142", "225125"],
         "ocupacao": [
             "Enfermeiro",
+            "Enfermeiro da estratégia de saúde da família",
             "Médico clínico",
             "Médico <pediatra>",
             "Agente comunitário de saúde",
+            "Médico da Estratégia de Saúde da Família",
             "Médico clínico",
         ],
-        "profissionais": [3, 1, 2, 8, 1],
-        "competencia": ["2026-09"] * 5,
+        "profissionais": [1, 2, 1, 2, 8, 1, 1],
+        "competencia": ["2026-09"] * 7,
     }
 ).set_index("cnes")
 
 
 def test_equipe_unidade_por_area_e_quantidade():
     assert geo.equipe_unidade(EQUIPES, "0000001") == [
-        ("Médicos", "Médico <pediatra> (2), Médico clínico (1)"),
-        ("Enfermagem", "Enfermeiro (3)"),
-        ("Agentes de saúde", "Agente comunitário de saúde (8)"),
+        ("Médicos", "Médico <pediatra>, Médico, Médico clínico"),
+        ("Enfermagem", "Enfermeiro"),  # o da estratégia de saúde da família vira um só
+        ("Agentes de saúde", "Agente comunitário de saúde"),
     ]
     assert geo.equipe_unidade(EQUIPES, "0000003") == []
     assert geo.equipe_unidade(None, "0000001") == []
@@ -356,7 +359,8 @@ def test_popup_mostra_equipe_escapada():
     equipes = {"0000001": geo.equipe_unidade(EQUIPES, "0000001")}
     html = mapa_ubs(ORIGEM, proximas, {}, equipes=equipes).get_root().render()
     assert (
-        "<br><b>Profissionais de saúde</b><br><b>Médicos:</b> Médico &lt;pediatra&gt; (2)"
+        "<br><b>Profissionais de saúde</b><br>"
+        "<b>Médicos:</b> Médico &lt;pediatra&gt;, Médico, Médico clínico<br>"
     ) in html
     assert "Médico <pediatra>" not in html
     assert "overflow-y: auto" in html

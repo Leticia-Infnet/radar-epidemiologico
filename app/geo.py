@@ -363,33 +363,39 @@ ATRIBUICAO = (
 
 
 TITULO_EQUIPE = "Profissionais de saúde"
+# Sufixo dos códigos CBO das equipes de saúde da família (Médico, Enfermeiro, Técnico de
+# enfermagem, Cirurgião-dentista...). Repetido em quase toda UBS, só alonga a lista.
+_SUFIXO_ESF = re.compile(r"\s+da estratégia de saúde da família$", re.IGNORECASE)
+
+
+def ocupacao_resumida(ocupacao: Any) -> str:
+    """`Enfermeiro da estratégia de saúde da família` → `Enfermeiro`."""
+    return _SUFIXO_ESF.sub("", texto(ocupacao))
 
 
 def equipe_unidade(profissionais: pd.DataFrame | None, cnes: str) -> list[tuple[str, str]]:
-    """Profissionais de saúde da UBS por área: `("Médicos", "Médico pediatra (2), ...")`.
+    """Ocupações de saúde presentes na UBS, por área: `("Médicos", "Médico pediatra, ...")`.
 
     `profissionais` é a tabela do Hub indexada por CNES (`data.profissionais_ubs`). As
     áreas seguem a ordem de `GRUPOS`; dentro delas, as ocupações com mais profissionais
-    vêm primeiro. Lista vazia se a tabela faltar ou a UBS não tiver ninguém cadastrado.
+    vêm primeiro, mas a quantidade não é exibida. Os nomes saem sem o sufixo da estratégia
+    de saúde da família (`ocupacao_resumida`), e os que ficam iguais viram um só. Lista
+    vazia se a tabela faltar ou a UBS não tiver ninguém cadastrado.
     """
     if profissionais is None or cnes not in profissionais.index:
         return []
-    da_ubs = profissionais.loc[[cnes]].sort_values(
-        ["profissionais", "ocupacao"], ascending=[False, True]
+    da_ubs = (
+        profissionais.loc[[cnes]]
+        .assign(ocupacao=lambda t: t["ocupacao"].map(ocupacao_resumida))
+        .groupby(["grupo", "ocupacao"], as_index=False)["profissionais"]
+        .sum()
+        .sort_values(["profissionais", "ocupacao"], ascending=[False, True])
     )
     campos = []
     for grupo in GRUPOS:
         linhas = da_ubs[da_ubs["grupo"] == grupo]
         if not linhas.empty:
-            campos.append(
-                (
-                    grupo,
-                    ", ".join(
-                        f"{texto(o)} ({n})"
-                        for o, n in zip(linhas["ocupacao"], linhas["profissionais"], strict=True)
-                    ),
-                )
-            )
+            campos.append((grupo, ", ".join(linhas["ocupacao"])))
     return campos
 
 

@@ -211,9 +211,8 @@ if resultado := st.session_state.get("mapa_ubs"):
 
     if competencia := geo.competencia_equipe(profissionais):
         st.caption(
-            f"Profissionais cadastrados no CNES em {competencia}, contados uma vez por "
-            "ocupação mesmo com mais de um vínculo. A equipe presente em cada dia e turno "
-            "pode variar; confirme com a unidade."
+            f"Ocupações dos profissionais cadastrados no CNES em {competencia}. A equipe "
+            "presente em cada dia e turno pode variar; confirme com a unidade."
         )
     st.caption(
         "Fontes: cadastro de UBS e CNES (Ministério da Saúde, dados abertos e FTP do "
