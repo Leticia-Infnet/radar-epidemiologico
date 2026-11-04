@@ -268,6 +268,40 @@ antes de expandir.
 Se o volume via API ficar proibitivo, complemente a carga inicial com os CSVs do
 OpenDataSUS e use a DEMAS apenas para o incremental.
 
+**ETL implementado** (branch `feature/etl-arboviroses`, 2026-11-04). A fonte não é a
+DEMAS nem o OpenDataSUS, mas os **arquivos nacionais do SINAN no FTP do DATASUS**
+(`/dissemin/publicos/SINAN/DADOS/FINAIS` e `PRELIM`, `DENGBR<AA>.dbc`, `CHIKBR..`,
+`ZIKABR..`), um por agravo e ano. Com eles, o Brasil inteiro cabe numa execução do CI.
+
+- Decisões (validadas pela usuária em 2026-11-04): município de **residência**
+  (`ID_MN_RESI`), semana de **início dos sintomas** (`SEM_PRI`), **casos prováveis**
+  (não descartados: `CLASSI_FIN` diferente de 2 e 5) e **Brasil inteiro**, com dengue
+  desde 2010, chikungunya desde 2014 e zika desde 2015 (`pipeline.ANOS_INICIAIS`).
+- Os arquivos de dengue do FTP **já vêm sem os descartados**; notificações totais não são
+  possíveis por essa fonte. Nos outros agravos, os descartados saem na agregação.
+- Leitura: `datasus.ler_colunas_dbf` recorta só os campos usados direto do DBF com NumPy
+  (registros de largura fixa), cerca de 70 vezes mais rápido que o `dbfread`.
+- Agregação (`etl/transform/aggregate.py`): por arquivo, `contar_por_semana`; depois
+  `series_semanais` soma os arquivos e **completa com zero** todas as semanas do ano
+  inicial até a semana do corte, para os 5.571 municípios do dicionário. Casos de
+  residência fora do dicionário (código de UF com `0000`, por exemplo) entram só nos
+  totais da UF e do Brasil.
+- Corte: a data de publicação (MDTM no FTP) do arquivo mais recente. As últimas 4 semanas
+  (8 na zika) antes dele ficam com `semana_incompleta`.
+- Publicação em `arboviroses/`: `doenca=<agravo>/uf=<código>/casos.parquet` (por
+  município) e `resumo.parquet` (por UF e `BR`), com contratos `CasosSemanais` e
+  `ResumoSemanal`. O `metadados.json` traz, por agravo, corte, última semana, totais,
+  descartes e a data de cada arquivo.
+- População para a incidência: etapa `populacao`, estimativa de 2022 por município do
+  endpoint `/macrorregiao-e-regiao-de-saude/municipio` da DEMAS.
+- Validação: a chikungunya de 2024 notificada e residente em Olinda tem as mesmas
+  contagens no FTP e na DEMAS (teste de integração).
+- Carga completa local (2026-11-04, corte em 2026-10-27): 13,5 minutos, pico de 3 GB de
+  memória e 2,8 MB de Parquet para 12 milhões de linhas. Casos prováveis: 22,7 milhões de
+  dengue (6,56 milhões em 2024), 1,65 milhão de chikungunya e 342 mil de zika (213 mil em
+  2016), compatíveis com os boletins do MS. Cerca de 25 mil casos de dengue têm
+  residência fora do dicionário de municípios.
+
 ### 7.2 Previsão de notificações
 
 O pedido original era regressão linear. **Regressão linear pura sobre a contagem de
@@ -390,6 +424,11 @@ metadados.
 | Servidor de demonstração do OSRM ignora o perfil e roteia sempre de carro | Usar o OSRM da FOSSGIS (seção 7.3) |
 | Campos opcionais do Parquet (bairro, logradouro) chegam ao pandas como `NaN` (float) | Usar `geo.texto()` antes de exibir ou escapar |
 | `uv run` no CI ressincroniza os grupos padrão por cima do `uv sync --group ...` | `UV_NO_SYNC=1` nos workflows |
+| Arquivos de dengue do SINAN no FTP não trazem os casos descartados | A série é de casos prováveis; notificações totais só pela DEMAS |
+| O arquivo preliminar do SINAN é publicado dias depois do corte real dos dados: as últimas semanas chegam quase vazias | Marcar as últimas semanas antes da publicação como incompletas (`aggregate.SEMANAS_INCOMPLETAS`) |
+| `dbfread` lê cerca de 75 µs por registro; a dengue de 2024 tem mais de 6 milhões | Recortar só os campos usados com NumPy (`datasus.ler_colunas_dbf`) |
+| `/macrorregiao-e-regiao-de-saude/municipio` devolve no máximo 860 registros por página, mesmo com `limit=1000`, e o cliente tomava a página curta pela última | `DemasClient.todos(..., tamanho_pagina=500)`; o piso de linhas pegou o erro |
+| `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
 
 ---
 
@@ -408,7 +447,8 @@ metadados.
 │   └── config.py            # pydantic-settings, prefixo RADAR_
 ├── etl/
 │   ├── extract/             # clientes das APIs e do FTP do DATASUS, paginação, retry
-│   ├── transform/           # normalização, calendário epidemiológico, agregação, Pandera
+│   ├── transform/           # normalização, calendário epidemiológico, agregação, Pandera,
+│   │                        # ocupações (cbo.py), profissionais e população
 │   ├── publish/             # upload para o HF Hub
 │   └── pipeline.py          # ponto de entrada: python -m etl.pipeline <etapas>
 ├── ml/
@@ -461,10 +501,10 @@ metadados.
 
 ## 11. Ordem de implementação sugerida
 
-Situação em 2026-10-29 entre colchetes.
+Situação em 2026-11-04 entre colchetes.
 
 
-0. [Feito; decisões pendentes, seção 12] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
+0. [Feito; decisões tomadas em 2026-11-04, seção 7.1] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
    conformidade da API, esquema e qualidade de cada fonte, volume e custo de extração,
    sazonalidade e sobredispersão das séries. Suas conclusões fixam as decisões de ETL
    (município de referência, semana de referência, definição de caso, recorte inicial)
@@ -472,7 +512,7 @@ Situação em 2026-10-29 entre colchetes.
 1. [Feito] Cliente da DEMAS com paginação e retry, mais teste contra um município pequeno.
 2. [Feito] ETL de UBS completo (dataset menor, valida o pipeline ponta a ponta) e publicação no Hub.
 3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
-4. [Dicionário de municípios feito; arboviroses pendente] ETL de arboviroses com recorte inicial, mais o dicionário de municípios do IBGE.
+4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
 5. [Pendente] Feature 1, o dashboard.
 6. [Pendente] Feature 2, previsão, começando pelo baseline sazonal.
 7. [Pendente] Feature 4, o chatbot RAG.
@@ -483,11 +523,8 @@ Situação em 2026-10-29 entre colchetes.
 
 - ~~Confirmar se os endpoints de arboviroses exigem autenticação.~~ Não exigem (seção 3).
 - ~~Confirmar os nomes exatos dos parâmetros de filtro por endpoint no Swagger.~~ Ver seção 3.
-- Definir o município de referência da agregação: residência (`id_mn_resi`) ou
-  notificação (`id_municip`). A API só filtra pela notificação.
-- Definir a semana de referência (`sem_pri` ou `sem_not`) e a definição de caso
-  (notificações totais ou casos prováveis), a partir do notebook de análise exploratória.
-- Definir o recorte geográfico inicial da carga de arboviroses.
+- ~~Definir município de referência, semana de referência, definição de caso e recorte.~~
+  Residência, início dos sintomas, casos prováveis e Brasil inteiro (seção 7.1).
 - Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.
 - Profissionais por UBS: implementado na branch `feature/profissionais-ubs` (seção 7.3).
   O FTP do DATASUS aceita conexões do GitHub Actions (verificado em 2026-11-04: etapa
@@ -495,8 +532,11 @@ Situação em 2026-10-29 entre colchetes.
   quase não aparecem em UBS.
 - A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
   (julho), não entre fevereiro e maio (seção 7.2). Modelar a sazonalidade por região ou município.
-- Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS, apesar da
-  epidemia em Pernambuco: pode haver lacuna de cobertura nos primeiros anos do agravo.
+- ~~Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS.~~ A
+  lacuna está no próprio SINAN: o arquivo nacional do FTP também traz só 1 e 9 casos
+  prováveis em Olinda nesses anos. A zika só passou a ser de notificação compulsória em
+  2016; o dashboard deve avisar que os primeiros anos subestimam a epidemia.
+- População por ano para a incidência: hoje usa a estimativa de 2022 para todos os anos.
 
 ---
 
@@ -530,7 +570,8 @@ Atualizado em 2026-11-04.
 
 - `etl/`: cliente DEMAS (paginação, retry, contagem por busca binária), normalização,
   calendário epidemiológico, contratos Pandera, pipeline `municipios`, `ubs` e
-  `profissionais` (FTP do DATASUS) com piso de linhas e `--sem-publicar`. `arboviroses` ainda levanta `NotImplementedError`.
+  `profissionais`, `populacao` e `arboviroses` (FTP do DATASUS) com piso de linhas e
+  `--sem-publicar`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
 - `app/`: página inicial e mapa de UBS completos; dashboard, previsão e chatbot são
   esqueletos "em construção".
@@ -538,14 +579,19 @@ Atualizado em 2026-11-04.
 - `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
   o resto são esqueletos. `rag/fontes.yaml` está vazio.
 - Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
-- Workflows: `ci` (push e PR), `etl` (manual; cron comentado até `arboviroses` existir),
-  `train` e `index` (esqueletos).
+- Workflows: `ci` (push e PR), `etl` (manual e cron semanal, segundas às 03h de
+  Brasília: `ubs profissionais populacao arboviroses`), `train` e `index` (esqueletos).
 
 ### Próximos passos combinados
 
-1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
-2. ETL de arboviroses e dashboard (etapas 4 e 5).
-3. Profissionais por UBS: publicado no Hub. Quando o cron do `etl` for habilitado, a
-   etapa já roda junto (padrão `ubs profissionais arboviroses`). Possível evolução: filtrar o mapa por ocupação
-   (por exemplo, a UBS mais próxima com pediatra).
+1. Etapa A (ETL de arboviroses): rodar no Actions, publicar e fazer o PR da branch
+   `feature/etl-arboviroses`.
+2. Etapa B: página do dashboard, na branch `feature/dashboard`. Plano: filtros de doença,
+   local (Brasil, UF ou município) e ano; indicadores (casos prováveis, incidência por
+   100 mil, variação até a mesma semana do ano anterior, semana de pico, óbitos); curva
+   semanal contra a faixa dos anos anteriores (mediana e intervalo interquartil), com as
+   semanas incompletas destacadas; barras anuais; ranking de municípios da UF. Febre
+   amarela e mapa coroplético ficam para depois.
+3. Profissionais por UBS: possível evolução, filtrar o mapa por ocupação (por exemplo, a
+   UBS mais próxima com pediatra).
 

@@ -32,3 +32,11 @@ def calendario(ano_inicial: int, ano_final: int) -> pd.DataFrame:
         for semana in range(1, semanas_no_ano(ano) + 1)
     ]
     return pd.DataFrame(linhas)
+
+
+def semana_epidemiologica(dia: date) -> tuple[int, int]:
+    """Ano e semana epidemiológica de uma data."""
+    ano = dia.year + 1
+    while inicio_ano_epi(ano) > dia:
+        ano -= 1
+    return ano, (dia - inicio_ano_epi(ano)).days // 7 + 1
