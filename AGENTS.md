@@ -507,7 +507,7 @@ Atualizado em 2026-11-04.
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida) e `municipios/` (5.571), cada um com `metadados.json` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571) e `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), cada um com `metadados.json` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
 | Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
 | Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
@@ -543,7 +543,7 @@ Atualizado em 2026-11-04.
 
 1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
 2. ETL de arboviroses e dashboard (etapas 4 e 5).
-3. Profissionais por UBS: publicar no Hub (workflow `etl` com `profissionais`) e abrir o
-   PR da branch `feature/profissionais-ubs`. Possível evolução: filtrar o mapa por ocupação
+3. Profissionais por UBS: publicado no Hub; incluir `profissionais` no cron do `etl`
+   quando ele for habilitado (o padrão do workflow já inclui a etapa). Possível evolução: filtrar o mapa por ocupação
    (por exemplo, a UBS mais próxima com pediatra).
 
