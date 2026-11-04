@@ -5,7 +5,7 @@ from streamlit.testing.v1 import AppTest
 
 from app import data, geo
 from app.geo import CepNaoEncontrado, Localizacao, Rota, construir_indice
-from tests.test_geo import UBS
+from tests.test_geo import EQUIPES, UBS
 
 PAGINA = str(Path(__file__).parents[1] / "app" / "pages" / "3_mapa.py")
 RECIFE = Localizacao(-8.05, -34.88, "BrasilAPI", "Rua Teste, Recife, PE")
@@ -15,6 +15,7 @@ RECIFE = Localizacao(-8.05, -34.88, "BrasilAPI", "Rua Teste, Recife, PE")
 def sem_rede(monkeypatch):
     """Substitui Hub, CNES e o servidor de rotas por dados locais."""
     monkeypatch.setattr(data, "indice_ubs", lambda: (construir_indice(UBS), UBS))
+    monkeypatch.setattr(data, "profissionais_ubs", lambda: EQUIPES)
     monkeypatch.setattr(
         geo,
         "detalhar_estabelecimento",
@@ -99,3 +100,26 @@ def test_cep_nao_encontrado_mostra_erro(sem_rede, monkeypatch):
     app = _buscar("69900-001")
     assert not app.exception
     assert "Não encontramos" in app.error[0].value
+
+
+def test_cards_mostram_profissionais_de_saude(sem_rede, monkeypatch):
+    monkeypatch.setattr(geo, "geocodificar_cep", lambda cep: RECIFE)
+    app = _buscar("50050-003", quantidade=3)
+    assert not app.exception
+    textos = " ".join(m.value for m in app.markdown)
+    assert "**Profissionais de saúde**" in textos
+    assert "- **Médicos:** Médico \\<pediatra\\> (2), Médico clínico (1)" in textos
+    assert "- **Agentes de saúde:** Agente comunitário de saúde (8)" in textos
+    legendas = " ".join(c.value for c in app.caption)
+    # A UBS 0000003 não tem ninguém na tabela.
+    assert "Nenhum profissional de saúde desta unidade consta no CNES." in legendas
+    assert "Profissionais cadastrados no CNES em 09/2026" in legendas
+
+
+def test_mapa_funciona_sem_tabela_de_profissionais(sem_rede, monkeypatch):
+    monkeypatch.setattr(geo, "geocodificar_cep", lambda cep: RECIFE)
+    monkeypatch.setattr(data, "profissionais_ubs", lambda: None)
+    app = _buscar("50050-004", quantidade=2)
+    assert not app.exception
+    assert "Profissionais de saúde" not in " ".join(m.value for m in app.markdown)
+    assert "CNES em" not in " ".join(c.value for c in app.caption)

@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn.neighbors import BallTree
 
 from common.config import Settings, get_settings
+from etl.transform.cbo import GRUPOS
 from etl.transform.normalize import ausente, codigo_cnes, coordenada, dentro_do_brasil
 
 log = logging.getLogger(__name__)
@@ -350,6 +351,8 @@ ESTILO_MAPA = (
     # O Leaflet usa 12 a 13 px em popups e dicas; pequeno demais para leitura confortável.
     ".leaflet-popup-content { font-size: 15px; line-height: 1.45; }"
     ".leaflet-tooltip { font-size: 14px; }"
+    # A lista de profissionais de uma UBS grande não cabe na altura do mapa.
+    ".leaflet-popup-content { max-height: 320px; overflow-y: auto; }"
     "</style>"
 )
 ATRIBUICAO = (
@@ -357,6 +360,45 @@ ATRIBUICAO = (
     'Rotas: <a href="https://routing.openstreetmap.de/">FOSSGIS</a> · '
     '<a href="https://www.openstreetmap.org/fixthemap">Corrigir o mapa</a>'
 )
+
+
+TITULO_EQUIPE = "Profissionais de saúde"
+
+
+def equipe_unidade(profissionais: pd.DataFrame | None, cnes: str) -> list[tuple[str, str]]:
+    """Profissionais de saúde da UBS por área: `("Médicos", "Médico pediatra (2), ...")`.
+
+    `profissionais` é a tabela do Hub indexada por CNES (`data.profissionais_ubs`). As
+    áreas seguem a ordem de `GRUPOS`; dentro delas, as ocupações com mais profissionais
+    vêm primeiro. Lista vazia se a tabela faltar ou a UBS não tiver ninguém cadastrado.
+    """
+    if profissionais is None or cnes not in profissionais.index:
+        return []
+    da_ubs = profissionais.loc[[cnes]].sort_values(
+        ["profissionais", "ocupacao"], ascending=[False, True]
+    )
+    campos = []
+    for grupo in GRUPOS:
+        linhas = da_ubs[da_ubs["grupo"] == grupo]
+        if not linhas.empty:
+            campos.append(
+                (
+                    grupo,
+                    ", ".join(
+                        f"{texto(o)} ({n})"
+                        for o, n in zip(linhas["ocupacao"], linhas["profissionais"], strict=True)
+                    ),
+                )
+            )
+    return campos
+
+
+def competencia_equipe(profissionais: pd.DataFrame | None) -> str:
+    """Mês de referência da tabela de profissionais, como `09/2026`; vazio sem tabela."""
+    if profissionais is None or profissionais.empty:
+        return ""
+    ano, mes = str(profissionais["competencia"].iloc[0]).split("-")
+    return f"{mes}/{ano}"
 
 
 def campos_unidade(
@@ -386,13 +428,24 @@ def campos_unidade(
     return [(rotulo, valor) for rotulo, valor in campos if valor]
 
 
-def _popup(posicao: int, ubs: dict[str, Any], detalhe: dict[str, Any] | None, modo: str) -> str:
+def _popup(
+    posicao: int,
+    ubs: dict[str, Any],
+    detalhe: dict[str, Any] | None,
+    modo: str,
+    equipe: list[tuple[str, str]] | None = None,
+) -> str:
     nome = texto((detalhe or {}).get("nome")) or texto(ubs["nome"])
     linhas = [f"<b>{posicao}. {html.escape(nome)}</b>"]
     linhas += [
         f"<b>{rotulo}:</b> {html.escape(valor)}"
         for rotulo, valor in campos_unidade(ubs, detalhe, modo)
     ]
+    if equipe:
+        linhas.append(f"<br><b>{TITULO_EQUIPE}</b>")
+        linhas += [
+            f"<b>{html.escape(grupo)}:</b> {html.escape(ocupacoes)}" for grupo, ocupacoes in equipe
+        ]
     if ubs.get("coordenada_aproximada"):
         linhas.append("<i>Localização aproximada no mapa.</i>")
     return "<br>".join(linhas)
@@ -405,11 +458,14 @@ def mapa_ubs(
     rota: Rota | None = None,
     destino: str | None = None,
     modo: str = "a_pe",
+    equipes: dict[str, list[tuple[str, str]]] | None = None,
 ) -> folium.Map:
     """Mapa de base suavizado com a origem, as UBS numeradas e a rota até o destino.
 
-    `destino` é o CNES da UBS da rota, destacada em verde.
+    `destino` é o CNES da UBS da rota, destacada em verde. `equipes` traz, por CNES, os
+    profissionais de `equipe_unidade`.
     """
+    equipes = equipes or {}
     mapa = folium.Map(location=[origem.latitude, origem.longitude], tiles=None)
     folium.TileLayer(TILES, attr=ATRIBUICAO, max_zoom=19, class_name=CLASSE_BASE).add_to(mapa)
     mapa.get_root().header.add_child(folium.Element(ESTILO_MAPA))
@@ -437,7 +493,8 @@ def mapa_ubs(
             [ubs["latitude"], ubs["longitude"]],
             tooltip=f"{posicao}. {ubs['nome']}",
             popup=folium.Popup(
-                _popup(posicao, ubs, detalhes.get(ubs["cnes"]), modo), max_width=300
+                _popup(posicao, ubs, detalhes.get(ubs["cnes"]), modo, equipes.get(ubs["cnes"])),
+                max_width=340,
             ),
             icon=folium.Icon(color=cor, icon="plus-square", prefix="fa"),
         ).add_to(mapa)

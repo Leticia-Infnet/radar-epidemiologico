@@ -62,3 +62,10 @@ def test_rota_real(modo):
     velocidade_kmh = achada.distancia_m / achada.duracao_s * 3.6
     # A pé, cerca de 5 km/h; de carro, bem mais rápido.
     assert (velocidade_kmh < 7) if modo == "a_pe" else (velocidade_kmh > 15)
+
+
+def test_ftp_do_datasus_tem_competencia_completa_de_profissionais():
+    from etl.extract.datasus import competencia_pf
+
+    aamm = competencia_pf()
+    assert len(aamm) == 4 and aamm >= "2601"

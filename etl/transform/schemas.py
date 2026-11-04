@@ -2,6 +2,7 @@
 
 import pandera.polars as pa
 
+from etl.transform.cbo import GRUPOS
 from etl.transform.normalize import LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
 
 
@@ -18,6 +19,20 @@ class UBS(pa.DataFrameModel):
     longitude: float = pa.Field(ge=LON_MIN, le=LON_MAX)
     # Até 2 casas decimais (precisão de cerca de 1 km).
     coordenada_aproximada: bool
+
+
+class ProfissionalUBS(pa.DataFrameModel):
+    """Profissionais de saúde distintos por UBS e ocupação (CBO), sem dados pessoais."""
+
+    cnes: str = pa.Field(str_matches=r"^\d{7}$")
+    grupo: str = pa.Field(isin=list(GRUPOS))
+    cbo: str = pa.Field(str_length=6)
+    ocupacao: str
+    profissionais: int = pa.Field(ge=1)
+    competencia: str = pa.Field(str_matches=r"^\d{4}-\d{2}$")
+
+    class Config:
+        unique = ["cnes", "cbo"]
 
 
 class Municipio(pa.DataFrameModel):

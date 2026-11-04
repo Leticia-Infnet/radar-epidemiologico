@@ -25,7 +25,7 @@ no Hub; a aplicação lê do Hub no startup.
 |---|---|
 | `notebooks/` | Etapa 0: análise exploratória qualitativa e quantitativa |
 | `common/` | Configuração compartilhada (`pydantic-settings`) |
-| `etl/` | Extração (DEMAS, IBGE), normalização, validação Pandera e publicação no Hub |
+| `etl/` | Extração (DEMAS, IBGE, FTP do DATASUS), normalização, validação Pandera e publicação no Hub |
 | `ml/` | Atributos, treino e backtest do modelo de tendência |
 | `rag/` | Ingestão dos manuais, chunking, indexação, busca e filtro de sinais de alarme |
 | `app/` | Aplicação Streamlit, suas páginas e o `requirements.txt` do deploy |
@@ -67,6 +67,12 @@ no `.env`. Só é preciso repetir quando o IBGE criar ou alterar municípios:
 ```bash
 uv run python -m etl.pipeline municipios
 ```
+
+A etapa `profissionais` conta os profissionais de saúde de cada UBS por ocupação (CBO),
+a partir dos arquivos mensais `PF<UF><AAMM>.dbc` do CNES no FTP do DATASUS. Usa a
+competência mais recente já publicada para todas as UFs e as UBS que estão no Hub, então
+deve rodar depois de `ubs`. Baixa cerca de 350 MB, uma UF por vez, e publica só as
+contagens, sem nomes nem documentos dos profissionais.
 
 Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
 publicados.

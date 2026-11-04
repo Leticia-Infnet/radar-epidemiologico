@@ -316,3 +316,47 @@ def test_link_rota():
     assert url.startswith("https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot")
     assert "-8.00000%2C-34.80000%3B-8.01000%2C-34.85000" in url
     assert "engine=fossgis_osrm_car" in geo.link_rota(origem, -8.01, -34.85, "carro")
+
+
+EQUIPES = pd.DataFrame(
+    {
+        "cnes": ["0000001"] * 4 + ["0000002"],
+        "grupo": ["Enfermagem", "Médicos", "Médicos", "Agentes de saúde", "Médicos"],
+        "cbo": ["223565", "225125", "225124", "515105", "225125"],
+        "ocupacao": [
+            "Enfermeiro",
+            "Médico clínico",
+            "Médico <pediatra>",
+            "Agente comunitário de saúde",
+            "Médico clínico",
+        ],
+        "profissionais": [3, 1, 2, 8, 1],
+        "competencia": ["2026-09"] * 5,
+    }
+).set_index("cnes")
+
+
+def test_equipe_unidade_por_area_e_quantidade():
+    assert geo.equipe_unidade(EQUIPES, "0000001") == [
+        ("Médicos", "Médico <pediatra> (2), Médico clínico (1)"),
+        ("Enfermagem", "Enfermeiro (3)"),
+        ("Agentes de saúde", "Agente comunitário de saúde (8)"),
+    ]
+    assert geo.equipe_unidade(EQUIPES, "0000003") == []
+    assert geo.equipe_unidade(None, "0000001") == []
+
+
+def test_competencia_equipe():
+    assert geo.competencia_equipe(EQUIPES) == "09/2026"
+    assert geo.competencia_equipe(None) == ""
+
+
+def test_popup_mostra_equipe_escapada():
+    proximas = ubs_mais_proximas(construir_indice(UBS), UBS, -23.0, -46.0, k=1)
+    equipes = {"0000001": geo.equipe_unidade(EQUIPES, "0000001")}
+    html = mapa_ubs(ORIGEM, proximas, {}, equipes=equipes).get_root().render()
+    assert (
+        "<br><b>Profissionais de saúde</b><br><b>Médicos:</b> Médico &lt;pediatra&gt; (2)"
+    ) in html
+    assert "Médico <pediatra>" not in html
+    assert "overflow-y: auto" in html

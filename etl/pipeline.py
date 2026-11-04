@@ -1,6 +1,6 @@
 """Ponto de entrada do ETL, chamado pelo workflow `etl.yml`.
 
-Uso: `uv run python -m etl.pipeline {municipios,ubs,arboviroses} [--sem-publicar]`
+Uso: `uv run python -m etl.pipeline {municipios,ubs,profissionais,arboviroses} [--sem-publicar]`
 
 Cada etapa extrai, normaliza, valida contra o contrato Pandera e publica no repositório
 *dataset* do Hub uma pasta com o Parquet e um `metadados.json`. Os arquivos só existem
@@ -16,13 +16,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from common.config import get_settings
+from etl.extract import datasus
 from etl.extract.demas import ENDPOINTS, DemasClient
 from etl.extract.ibge import municipios
 from etl.publish.hub import publicar_pasta
-from etl.transform.schemas import UBS, Municipio
+from etl.transform.profissionais import CAMPOS_PF, agregar_profissionais, competencia_iso
+from etl.transform.schemas import UBS, Municipio, ProfissionalUBS
 from etl.transform.ubs import normalizar_ubs
 
 log = logging.getLogger("etl")
@@ -31,6 +34,7 @@ log = logging.getLogger("etl")
 # vazia ou parcial da fonte nunca substitua o dataset publicado.
 MINIMO_MUNICIPIOS = 5500  # 5.571 em 2026-10
 MINIMO_UBS = 40_000  # 46.848 registros brutos em 2026-10
+MINIMO_UBS_COM_PROFISSIONAIS = 35_000  # em PE, 95% das UBS têm profissional (2026-09)
 
 
 class ExtracaoIncompleta(RuntimeError):
@@ -93,6 +97,40 @@ def executar_ubs(publicar: bool = True) -> pl.DataFrame:
     return tabela
 
 
+def _cnes_das_ubs_publicadas() -> set[str]:
+    url = f"hf://datasets/{get_settings().hf_dataset_repo}/ubs/ubs.parquet"
+    return set(pl.from_pandas(pd.read_parquet(url, columns=["cnes"]))["cnes"])
+
+
+def executar_profissionais(publicar: bool = True) -> pl.DataFrame:
+    """Conta os profissionais de saúde de cada UBS a partir dos arquivos PF do CNES.
+
+    Usa as UBS já publicadas no Hub e a competência mais recente com todas as UFs. Lê
+    uma UF por vez, para que só um arquivo fique em disco temporário.
+    """
+    cnes_ubs = _cnes_das_ubs_publicadas()
+    aamm = datasus.competencia_pf()
+    ocupacoes, familias = datasus.ocupacoes_cbo()
+    log.info("profissionais: competência %s, %d UBS.", aamm, len(cnes_ubs))
+
+    def vinculos():
+        for uf in datasus.UFS:
+            yield from datasus.profissionais_uf(uf, aamm, CAMPOS_PF)
+
+    tabela = agregar_profissionais(vinculos(), cnes_ubs, ocupacoes, competencia_iso(aamm), familias)
+    unidades = tabela["cnes"].n_unique()
+    _conferir_piso("profissionais", unidades, MINIMO_UBS_COM_PROFISSIONAIS)
+    ProfissionalUBS.validate(tabela)
+    metadados = {
+        "fonte": f"ftp://{get_settings().datasus_ftp_host}{get_settings().datasus_cnes_pf_dir}",
+        "competencia": competencia_iso(aamm),
+        "ubs_com_profissionais": unidades,
+        "ubs_publicadas": len(cnes_ubs),
+    }
+    _publicar(tabela, "profissionais", metadados, publicar)
+    return tabela
+
+
 def executar_arboviroses(publicar: bool = True) -> pl.DataFrame:
     """Extrai o recorte definido, agrega por semana epidemiológica e publica no Hub."""
     raise NotImplementedError
@@ -101,6 +139,7 @@ def executar_arboviroses(publicar: bool = True) -> pl.DataFrame:
 ETAPAS = {
     "municipios": executar_municipios,
     "ubs": executar_ubs,
+    "profissionais": executar_profissionais,
     "arboviroses": executar_arboviroses,
 }
 

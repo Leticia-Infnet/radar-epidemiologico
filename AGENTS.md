@@ -329,6 +329,22 @@ OpenRouteService.
 - A página só chama a rede depois do envio do formulário, e os testes simulam todos os
   serviços externos.
 
+**Profissionais de saúde por UBS** (branch `feature/profissionais-ubs`, 2026-11-04):
+
+- Etapa `profissionais` do ETL (`etl/extract/datasus.py`, `etl/transform/profissionais.py`):
+  baixa do FTP do DATASUS os arquivos `PF<UF><AAMM>.dbc` da competência mais recente que
+  já tem as 27 UFs, uma UF por vez, e conta profissionais distintos (por CNS; na falta,
+  CPF codificado) por UBS e ocupação. Publica `profissionais/` no Hub com `cnes`, `grupo`,
+  `cbo`, `ocupacao`, `profissionais` e `competencia`, **sem nomes nem documentos**.
+- Leitura do `.dbc`: `datasus-dbc` (MIT) descomprime e `dbfread` (MIT) lê o DBF. Nomes das
+  ocupações: `CBO_02.dbf` da `TAB_CNES.zip` do mesmo FTP (a `CBO.dbf` vem sem acentos).
+- Só entram ocupações de atendimento, agrupadas em `etl/transform/cbo.py` por família da
+  CBO: Médicos, Enfermagem, Saúde bucal, Equipe multiprofissional e Agentes de saúde.
+  Esse módulo é Python puro porque o app o importa e o Polars não vai para o deploy.
+- No mapa, popup e card ganham a seção "Profissionais de saúde", com as ocupações de cada
+  grupo e a quantidade; a página informa a competência. Sem a tabela no Hub, o mapa
+  funciona como antes (`data.profissionais_ubs` devolve None).
+
 ### 7.4 Chatbot RAG
 
 Orienta o usuário a partir dos sintomas relatados, **sem diagnosticar**.
@@ -362,7 +378,10 @@ metadados.
 | Códigos IBGE de 6 vs 7 dígitos | Padronizar cedo. A DEMAS usa 6 dígitos (sem dígito verificador); o IBGE usa 7 |
 | `codigo_cnes` com zeros à esquerda | Tratar como string, nunca como inteiro |
 | Parâmetro `campos` da DEMAS deixa a consulta lenta (até HTTP 502) | Não usar; baixar a linha inteira e selecionar colunas localmente |
-| `/assistencia-a-saude/cnes-profissionais` filtrado por estabelecimento devolve **um registro por requisição**, ignorando o `limit` | Inviável ao vivo ou por ETL via API; usar os arquivos mensais `PF*.dbc` do FTP do DATASUS |
+| `/assistencia-a-saude/cnes-profissionais` filtrado por estabelecimento devolve **um registro por competência**, e só até 2017 (verificado em 2026-11-04) | Usar os arquivos mensais `PF*.dbc` do FTP do DATASUS (etapa `profissionais`) |
+| `pyreaddbc`, o leitor de `.dbc` mais citado, é AGPL | `datasus-dbc` (MIT) + `dbfread` (MIT) |
+| O DATASUS publica os arquivos PF de cada UF em dias diferentes | Usar a competência mais recente que já tem as 27 UFs (`datasus.competencia_completa`) |
+| CBO 322255 falta na tabela `CBO_02.dbf` e está na família da enfermagem (3222), mas é usado para agentes comunitários (98% sem conselho em PE) | Nome e grupo complementares em `etl/transform/cbo.py`; códigos ainda sem nome aparecem como "<família> (CBO …)" |
 | API do IBGE recusa conexões do GitHub Actions | Etapa `municipios` roda localmente (seção 4.2) |
 | Hugging Face Spaces cobra para apps Gradio/Docker; o SDK `streamlit` foi descontinuado | App no Streamlit Community Cloud (seção 6) |
 | Tiles do CARTO respondem HTTP 200 com marca d'água "API KEY REQUIRED" | Usar tiles do OpenStreetMap; ao testar tiles, olhar a imagem, não só o status |
@@ -386,7 +405,7 @@ metadados.
 ├── common/
 │   └── config.py            # pydantic-settings, prefixo RADAR_
 ├── etl/
-│   ├── extract/             # clientes das APIs, paginação, retry
+│   ├── extract/             # clientes das APIs e do FTP do DATASUS, paginação, retry
 │   ├── transform/           # normalização, calendário epidemiológico, agregação, Pandera
 │   ├── publish/             # upload para o HF Hub
 │   └── pipeline.py          # ponto de entrada: python -m etl.pipeline <etapas>
@@ -468,11 +487,10 @@ Situação em 2026-10-29 entre colchetes.
   (notificações totais ou casos prováveis), a partir do notebook de análise exploratória.
 - Definir o recorte geográfico inicial da carga de arboviroses.
 - Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.
-- Profissionais por UBS (pedido da usuária): ETL dos arquivos mensais `PF<UF><AAMM>.dbc` do
-  FTP do DATASUS (`ftp.datasus.gov.br/dissemin/publicos/CNES/200508_/Dados/PF/`; PE de
-  2026-07 tem cerca de 13 MB), agregando as ocupações (CBO) por CNES, sem nomes. A verificar:
-  licença da biblioteca de leitura de `.dbc` (não pode ser AGPL) e se o FTP aceita conexões
-  do GitHub Actions. Especialistas (dermatologia, psiquiatria) quase não aparecem em UBS.
+- Profissionais por UBS: implementado na branch `feature/profissionais-ubs` (seção 7.3).
+  A verificar: se o FTP do DATASUS aceita conexões do GitHub Actions (rodar o workflow
+  `etl` com `profissionais` e `sem_publicar`). Se recusar, a etapa roda localmente, como
+  `municipios`. Especialistas (dermatologia, psiquiatria) quase não aparecem em UBS.
 - A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
   (julho), não entre fevereiro e maio (seção 7.2). Modelar a sazonalidade por região ou município.
 - Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS, apesar da
@@ -482,7 +500,7 @@ Situação em 2026-10-29 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-10-29.
+Atualizado em 2026-11-04.
 
 ### Onde as coisas estão
 
@@ -509,8 +527,8 @@ Atualizado em 2026-10-29.
 ### O que está implementado
 
 - `etl/`: cliente DEMAS (paginação, retry, contagem por busca binária), normalização,
-  calendário epidemiológico, contratos Pandera, pipeline `municipios` e `ubs` com piso de
-  linhas e `--sem-publicar`. `arboviroses` ainda levanta `NotImplementedError`.
+  calendário epidemiológico, contratos Pandera, pipeline `municipios`, `ubs` e
+  `profissionais` (FTP do DATASUS) com piso de linhas e `--sem-publicar`. `arboviroses` ainda levanta `NotImplementedError`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
 - `app/`: página inicial e mapa de UBS completos; dashboard, previsão e chatbot são
   esqueletos "em construção".
@@ -525,5 +543,7 @@ Atualizado em 2026-10-29.
 
 1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
 2. ETL de arboviroses e dashboard (etapas 4 e 5).
-3. Profissionais por UBS, na branch `feature/profissionais-ubs` (seção 12).
+3. Profissionais por UBS: testar a etapa no Actions, publicar no Hub e abrir o PR da
+   branch `feature/profissionais-ubs`. Possível evolução: filtrar o mapa por ocupação
+   (por exemplo, a UBS mais próxima com pediatra).
 
