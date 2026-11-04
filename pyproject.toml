@@ -15,6 +15,8 @@ dependencies = [
 [dependency-groups]
 # Cada grupo corresponde a uma camada da arquitetura (AGENTS.md, seção 5).
 etl = [
+    "datasus-dbc>=0.1.3",
+    "dbfread>=2.0.7",
     "duckdb>=1.1",
     "pandera[polars]>=0.20",
     "polars>=1.9",

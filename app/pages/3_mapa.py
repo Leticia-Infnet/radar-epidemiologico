@@ -146,6 +146,8 @@ if resultado := st.session_state.get("mapa_ubs"):
     with st.spinner(f"Calculando as distâncias {rotulo}..."):
         proximas = _ordenar(origem, proximas, modo)
     registros = proximas.to_dict("records")
+    profissionais = data.profissionais_ubs()
+    equipes = {u["cnes"]: geo.equipe_unidade(profissionais, u["cnes"]) for u in registros}
     nomes = {
         u["cnes"]: geo.texto((detalhes.get(u["cnes"]) or {}).get("nome")) or u["nome"]
         for u in registros
@@ -160,7 +162,9 @@ if resultado := st.session_state.get("mapa_ubs"):
         rota = _rota(origem, alvo["latitude"], alvo["longitude"], modo)
 
     st_folium(
-        geo.mapa_ubs(origem, proximas, detalhes, rota=rota, destino=destino, modo=modo),
+        geo.mapa_ubs(
+            origem, proximas, detalhes, rota=rota, destino=destino, modo=modo, equipes=equipes
+        ),
         height=480,
         use_container_width=True,
         returned_objects=[],
@@ -191,12 +195,28 @@ if resultado := st.session_state.get("mapa_ubs"):
                     for rotulo, valor in geo.campos_unidade(ubs, detalhe, modo)
                 )
             )
+            if equipe := equipes[ubs["cnes"]]:
+                st.markdown(
+                    f"**{geo.TITULO_EQUIPE}**\n\n"
+                    + "\n".join(
+                        f"- **{grupo}:** {_sem_markdown(ocupacoes)}" for grupo, ocupacoes in equipe
+                    )
+                )
+            elif profissionais is not None:
+                st.caption("Nenhum profissional de saúde desta unidade consta no CNES.")
             if ubs["coordenada_aproximada"]:
                 st.caption("A posição desta unidade no mapa é aproximada.")
             if not detalhe:
                 st.caption("Detalhes do CNES indisponíveis no momento.")
 
+    if competencia := geo.competencia_equipe(profissionais):
+        st.caption(
+            f"Profissionais cadastrados no CNES em {competencia}, contados uma vez por "
+            "ocupação mesmo com mais de um vínculo. A equipe presente em cada dia e turno "
+            "pode variar; confirme com a unidade."
+        )
     st.caption(
-        "Fontes: cadastro de UBS e CNES (Ministério da Saúde, dados abertos); mapa © "
-        "colaboradores do OpenStreetMap; rotas calculadas pelo OSRM da FOSSGIS."
+        "Fontes: cadastro de UBS e CNES (Ministério da Saúde, dados abertos e FTP do "
+        "DATASUS); mapa © colaboradores do OpenStreetMap; rotas calculadas pelo OSRM da "
+        "FOSSGIS."
     )

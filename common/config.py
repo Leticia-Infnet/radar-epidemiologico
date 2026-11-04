@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     demas_max_concurrency: int = 4
     demas_timeout_s: float = 120.0
 
+    # FTP do DATASUS: profissionais do CNES (PF<UF><AAMM>.dbc) e tabelas auxiliares.
+    datasus_ftp_host: str = "ftp.datasus.gov.br"
+    datasus_cnes_pf_dir: str = "/dissemin/publicos/CNES/200508_/Dados/PF"
+    datasus_cnes_tabelas: str = "/dissemin/publicos/CNES/200508_/Auxiliar/TAB_CNES.zip"
+    datasus_ftp_timeout_s: float = 300.0
+
     ibge_municipios_url: str = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
     brasilapi_cep_url: str = "https://brasilapi.com.br/api/cep/v2/{cep}"
     awesomeapi_cep_url: str = "https://cep.awesomeapi.com.br/json/{cep}"
