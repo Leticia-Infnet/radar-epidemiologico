@@ -488,9 +488,9 @@ Situação em 2026-10-29 entre colchetes.
 - Definir o recorte geográfico inicial da carga de arboviroses.
 - Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.
 - Profissionais por UBS: implementado na branch `feature/profissionais-ubs` (seção 7.3).
-  A verificar: se o FTP do DATASUS aceita conexões do GitHub Actions (rodar o workflow
-  `etl` com `profissionais` e `sem_publicar`). Se recusar, a etapa roda localmente, como
-  `municipios`. Especialistas (dermatologia, psiquiatria) quase não aparecem em UBS.
+  O FTP do DATASUS aceita conexões do GitHub Actions (verificado em 2026-11-04: etapa
+  completa em cerca de 11 minutos no runner). Especialistas (dermatologia, psiquiatria)
+  quase não aparecem em UBS.
 - A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
   (julho), não entre fevereiro e maio (seção 7.2). Modelar a sazonalidade por região ou município.
 - Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS, apesar da
@@ -543,7 +543,7 @@ Atualizado em 2026-11-04.
 
 1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
 2. ETL de arboviroses e dashboard (etapas 4 e 5).
-3. Profissionais por UBS: testar a etapa no Actions, publicar no Hub e abrir o PR da
-   branch `feature/profissionais-ubs`. Possível evolução: filtrar o mapa por ocupação
+3. Profissionais por UBS: publicar no Hub (workflow `etl` com `profissionais`) e abrir o
+   PR da branch `feature/profissionais-ubs`. Possível evolução: filtrar o mapa por ocupação
    (por exemplo, a UBS mais próxima com pediatra).
 
