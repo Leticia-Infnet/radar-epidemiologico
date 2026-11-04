@@ -543,7 +543,7 @@ Atualizado em 2026-11-04.
 
 1. Decisões do ETL de arboviroses (seção 12), de preferência com o orientador.
 2. ETL de arboviroses e dashboard (etapas 4 e 5).
-3. Profissionais por UBS: publicado no Hub; incluir `profissionais` no cron do `etl`
-   quando ele for habilitado (o padrão do workflow já inclui a etapa). Possível evolução: filtrar o mapa por ocupação
+3. Profissionais por UBS: publicado no Hub. Quando o cron do `etl` for habilitado, a
+   etapa já roda junto (padrão `ubs profissionais arboviroses`). Possível evolução: filtrar o mapa por ocupação
    (por exemplo, a UBS mais próxima com pediatra).
 
