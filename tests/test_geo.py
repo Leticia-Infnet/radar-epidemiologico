@@ -194,7 +194,7 @@ def test_mapa_usa_tiles_sem_chave_com_filtro_e_atribuicao():
     assert ".leaflet-popup-content { font-size: 15px;" in html
 
 
-@pytest.mark.parametrize(("modo", "cor"), [("a_pe", "#1d4ed8"), ("carro", "#7c3aed")])
+@pytest.mark.parametrize(("modo", "cor"), [("a_pe", "#2d6a35"), ("carro", "#7a4a1f")])
 def test_mapa_desenha_rota_e_destaca_destino(modo, cor):
     proximas = ubs_mais_proximas(construir_indice(UBS), UBS, -23.0, -46.0, k=2)
     trajeto = ((-23.0, -46.0), (-23.2, -46.3), (-23.5505, -46.6333))
@@ -203,7 +203,7 @@ def test_mapa_desenha_rota_e_destaca_destino(modo, cor):
     html = html.get_root().render()
     assert html.count("L.polyline(") == 1
     assert f'"color": "{cor}"' in html
-    assert '"markerColor": "green"' in html
+    assert '"markerColor": "orange"' in html
 
 
 @pytest.mark.parametrize(("modo", "perfil"), [("a_pe", "foot"), ("carro", "driving")])

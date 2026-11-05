@@ -302,6 +302,48 @@ DEMAS nem o OpenDataSUS, mas os **arquivos nacionais do SINAN no FTP do DATASUS*
   2016), compatíveis com os boletins do MS. Cerca de 25 mil casos de dengue têm
   residência fora do dicionário de municípios.
 
+**Dashboard implementado** (branch `feature/dashboard`, 2026-11-05), em
+`app/pages/1_dashboard.py`, `app/painel.py` (cálculos, sem Streamlit) e
+`app/graficos.py` (Plotly):
+
+- Filtros numa linha: doença, local (Brasil ou UF), município da UF (opcional) e ano. O
+  ano escolhido continua ao trocar de doença, se existir na outra.
+- Indicadores: casos prováveis no ano, com a variação em relação ao ano anterior até a
+  mesma semana (só semanas completas, e só com 20 casos ou mais no ano anterior);
+  incidência por 100 mil habitantes (população de 2022); semana de pico; óbitos.
+- Curva semanal do ano (azul) contra a mediana e o intervalo interquartil dos 10 anos
+  anteriores (cinza), com as semanas incompletas sombreadas; barras anuais com o ano em
+  destaque; ranking dos municípios da UF por incidência; tabela semanal num expansor.
+- Cores da paleta de referência da skill de visualização (azul `#2a78d6` para o foco,
+  cinzas neutros para o histórico); separadores brasileiros nos eixos e dicas.
+- Dados: `resumo.parquet` para Brasil e UF; a partição da UF só quando uma UF é escolhida
+  (`data.casos_uf`, em `st.cache_resource` com até 6 partições, inteiros de 32 bits e
+  código como categoria: a dengue de SP tem 566 mil linhas).
+- Aviso na zika de 2015 e 2016 (notificação compulsória só a partir de 2016).
+
+**Febre amarela** (mesma branch, 2026-11-05). A fonte e a métrica são outras, então ela
+tem visão própria no mesmo seletor de doença:
+
+- ETL `febre_amarela` (`etl/transform/febre_amarela.py`): endpoint de febre amarela da
+  DEMAS (3 requisições), sem as linhas repetidas (32 de 2.913). Publica
+  `febre_amarela/febre_amarela.parquet` com **casos humanos confirmados** e óbitos por
+  **período de monitoramento** (julho a junho, derivado da data de início dos sintomas),
+  ano, mês e **município provável de infecção** (`cod_mun_lpi`). Idade e sexo não saem
+  da etapa. Contrato `FebreAmarelaMensal`; piso de 2.500 casos (2.880 em 2026-11).
+- Painel: período no lugar do ano; indicadores de casos, óbitos, letalidade e municípios
+  com casos; barras por período desde 1994/1995 (com zero nos períodos sem casos, como
+  2011/2012) e por mês do período; tabela de municípios de infecção.
+- Casos sem município (7) ou sem mês (11) entram nos totais, não na tabela nem no gráfico
+  por mês.
+
+**Tema visual** (mesma branch): verdes de mata e marrons de terra em todas as páginas,
+pelo `.streamlit/config.toml` (`[theme.light]` e `[theme.dark]`). Texto sobre fundo acima
+de 12:1 nos dois modos. Nos gráficos (`graficos.PALETAS`, escolhida por
+`st.context.theme.type`), o foco é verde e o histórico, marrom-acinzentado; como verde e
+marrom de mesma luminosidade se confundem no daltonismo vermelho-verde, a separação vem
+da luminosidade (validada: CVD 18,5 no claro e 16,2 no escuro). No mapa, rota a pé verde
+e de carro marrom; UBS em verde-escuro, destino em laranja, posição aproximada em bege.
+
 ### 7.2 Previsão de notificações
 
 O pedido original era regressão linear. **Regressão linear pura sobre a contagem de
@@ -429,6 +471,9 @@ metadados.
 | O FTP do DATASUS recusou conexões (timeout) por mais de 10 minutos a partir do Actions em 2026-11-04, depois de aceitar a primeira | `datasus._conexao` conecta com timeout de 30 s; 7 tentativas com espera de até 2 min; uma conexão por arquivo |
 | O FTP do DATASUS derruba downloads longos no meio ("Connection reset by peer"): no Actions, o DENGBR24 (288 MB) caiu a cada 5 a 7 minutos e nunca terminava recomeçando do zero | `datasus._baixar` retoma do último byte (REST), confere o tamanho com SIZE e tenta até 15 vezes |
 | `dbfread` lê cerca de 75 µs por registro; a dengue de 2024 tem mais de 6 milhões | Recortar só os campos usados com NumPy (`datasus.ler_colunas_dbf`) |
+| Verde e marrom de mesma luminosidade se confundem no daltonismo vermelho-verde (CVD 2,6 no par testado) | Separar pela luminosidade: verde escuro e marrom claro no tema claro, o inverso no escuro (`app/graficos.py`) |
+| A DEMAS repete linhas idênticas de febre amarela (32 de 2.913) | Remover as repetidas no ETL `febre_amarela` |
+| Eixo de contagens pequenas no Plotly ganha marcas fracionárias, que o formato inteiro mostra como "0, 0, 1" | `graficos._eixo_y`: marcas de 1 em 1 até 10 |
 | `/macrorregiao-e-regiao-de-saude/municipio` devolve no máximo 860 registros por página, mesmo com `limit=1000`, e o cliente tomava a página curta pela última | `DemasClient.todos(..., tamanho_pagina=500)`; o piso de linhas pegou o erro |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
 
@@ -473,7 +518,10 @@ metadados.
 │   │   ├── 3_mapa.py
 │   │   └── 4_chatbot.py
 │   ├── data.py              # carregamento do Hub + cache
-│   └── geo.py               # CEP, BallTree, Folium
+│   ├── geo.py               # CEP, BallTree, Folium
+│   ├── painel.py            # cálculos do dashboard (indicadores, faixa histórica, ranking)
+│   └── graficos.py          # gráficos Plotly do dashboard, com as paletas do tema
+├── .streamlit/config.toml   # tema verde e marrom (claro e escuro)
 ├── tests/
 ├── pyproject.toml           # dependências por grupo: etl, ml, app, rag, indexacao, eda, dev
 └── README.md
@@ -515,7 +563,7 @@ Situação em 2026-11-04 entre colchetes.
 2. [Feito] ETL de UBS completo (dataset menor, valida o pipeline ponta a ponta) e publicação no Hub.
 3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
-5. [Pendente] Feature 1, o dashboard.
+5. [Feito, branch `feature/dashboard`] Feature 1, o dashboard.
 6. [Pendente] Feature 2, previsão, começando pelo baseline sazonal.
 7. [Pendente] Feature 4, o chatbot RAG.
 
@@ -575,25 +623,23 @@ Atualizado em 2026-11-04.
   `profissionais`, `populacao` e `arboviroses` (FTP do DATASUS) com piso de linhas e
   `--sem-publicar`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
-- `app/`: página inicial e mapa de UBS completos; dashboard, previsão e chatbot são
-  esqueletos "em construção".
+- `app/`: página inicial, dashboard de arboviroses e mapa de UBS completos; previsão e
+  chatbot são esqueletos "em construção".
 - `ml/`: atributos (Fourier, lags, médias móveis), baseline sazonal, MAE e MASE; treino pendente.
 - `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
   o resto são esqueletos. `rag/fontes.yaml` está vazio.
 - Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
 - Workflows: `ci` (push e PR), `etl` (manual e cron semanal, segundas às 03h de
-  Brasília: `ubs profissionais populacao arboviroses`), `train` e `index` (esqueletos).
+  Brasília: `ubs profissionais populacao arboviroses febre_amarela`), `train` e `index`
+  (esqueletos).
 
 ### Próximos passos combinados
 
-1. Etapa A (ETL de arboviroses): publicada no Hub; PR #4 da branch
-   `feature/etl-arboviroses`, aguardando a verificação da usuária antes do merge.
-2. Etapa B: página do dashboard, na branch `feature/dashboard`. Plano: filtros de doença,
-   local (Brasil, UF ou município) e ano; indicadores (casos prováveis, incidência por
-   100 mil, variação até a mesma semana do ano anterior, semana de pico, óbitos); curva
-   semanal contra a faixa dos anos anteriores (mediana e intervalo interquartil), com as
-   semanas incompletas destacadas; barras anuais; ranking de municípios da UF. Febre
-   amarela e mapa coroplético ficam para depois.
+1. Dashboard com febre amarela e tema verde e marrom (seção 7.1), na branch
+   `feature/dashboard`: verificação visual da usuária, publicação de `febre_amarela/`,
+   PR e merge. Depois: mapa coroplético.
+2. Feature 2, previsão (seção 7.2), começando pelo baseline sazonal sobre as séries de
+   `arboviroses/`.
 3. Profissionais por UBS: possível evolução, filtrar o mapa por ocupação (por exemplo, a
    UBS mais próxima com pediatra).
 

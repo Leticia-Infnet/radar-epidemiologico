@@ -1,0 +1,26 @@
+# Tema do Radar Epidemiológico: verdes de mata e marrons de terra.
+# Contrastes conferidos (WCAG): texto sobre fundo acima de 12:1 nos dois modos; texto
+# branco sobre a cor primária, 6,4:1 (claro) e 5,3:1 (escuro). Os gráficos usam as
+# cores de app/graficos.py, validadas para daltonismo com as checagens da skill de
+# visualização.
+
+[theme]
+baseRadius = "medium"
+
+[theme.light]
+primaryColor = "#2f6b3b"
+backgroundColor = "#f6f3ea"
+secondaryBackgroundColor = "#e9e2d0"
+textColor = "#2a2118"
+linkColor = "#2f6b3b"
+borderColor = "#d6cbb2"
+chartCategoricalColors = ["#2d6a35", "#a8977c"]
+
+[theme.dark]
+primaryColor = "#2f7a3e"
+backgroundColor = "#171a14"
+secondaryBackgroundColor = "#24281e"
+textColor = "#ece6d6"
+linkColor = "#8fc98f"
+borderColor = "#3a3f31"
+chartCategoricalColors = ["#5ca965", "#6f6452"]

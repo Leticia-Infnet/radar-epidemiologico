@@ -1,7 +1,7 @@
 """Ponto de entrada do ETL, chamado pelo workflow `etl.yml`.
 
 Uso: `uv run python -m etl.pipeline <etapas> [--sem-publicar]`, com as etapas
-`municipios`, `ubs`, `profissionais`, `populacao` e `arboviroses`.
+`municipios`, `ubs`, `profissionais`, `populacao`, `arboviroses` e `febre_amarela`.
 
 Cada etapa extrai, normaliza, valida contra o contrato Pandera e publica no repositório
 *dataset* do Hub uma pasta com o(s) Parquet(s) e um `metadados.json`. Os arquivos só
@@ -27,11 +27,13 @@ from etl.extract.ibge import municipios
 from etl.publish.hub import publicar_pasta
 from etl.transform.aggregate import CAMPOS_SINAN, contar_por_semana, series_semanais
 from etl.transform.calendario import semana_epidemiologica
+from etl.transform.febre_amarela import normalizar_febre_amarela
 from etl.transform.populacao import normalizar_populacao
 from etl.transform.profissionais import CAMPOS_PF, agregar_profissionais, competencia_iso
 from etl.transform.schemas import (
     UBS,
     CasosSemanais,
+    FebreAmarelaMensal,
     Municipio,
     Populacao,
     ProfissionalUBS,
@@ -47,6 +49,7 @@ MINIMO_MUNICIPIOS = 5500  # 5.571 em 2026-10
 MINIMO_UBS = 40_000  # 46.848 registros brutos em 2026-10
 MINIMO_UBS_COM_PROFISSIONAIS = 35_000  # em PE, 95% das UBS têm profissional (2026-09)
 MINIMO_POPULACAO = 5500  # 5.570 municípios em 2026-11
+MINIMO_CASOS_FEBRE_AMARELA = 2500  # 2.881 casos confirmados de 1994 a 2026 (2026-11)
 # Casos prováveis somados em todo o período de cada agravo.
 # Em 2026-11: 22,7 milhões de dengue (2010 a 2026), 1,65 milhão de chikungunya (2014 a
 # 2026) e 342 mil de zika (2015 a 2026).
@@ -271,12 +274,43 @@ def executar_arboviroses(publicar: bool = True) -> None:
         _publicar_pasta(pasta, "arboviroses", linhas, metadados, publicar, apagar=["*.parquet"])
 
 
+async def _baixar_febre_amarela() -> list[dict[str, Any]]:
+    async with DemasClient() as cliente:
+        return await cliente.todos(ENDPOINTS["febre_amarela"].caminho)
+
+
+def executar_febre_amarela(publicar: bool = True) -> pl.DataFrame:
+    """Casos humanos confirmados de febre amarela por município de infecção e mês."""
+    registros = asyncio.run(_baixar_febre_amarela())
+    tabela, descartes, mais_recente = normalizar_febre_amarela(registros)
+    casos = int(tabela["casos"].sum())
+    if casos < MINIMO_CASOS_FEBRE_AMARELA:
+        raise ExtracaoIncompleta(
+            f"febre_amarela: {casos} casos, abaixo do mínimo de {MINIMO_CASOS_FEBRE_AMARELA}."
+        )
+    FebreAmarelaMensal.validate(tabela)
+    metadados = {
+        "fonte": get_settings().demas_base_url + ENDPOINTS["febre_amarela"].caminho,
+        "definicao": "casos humanos confirmados por município provável de infecção, período "
+        "de monitoramento (julho a junho) e mês de início dos sintomas",
+        "registros_brutos": len(registros),
+        "descartes": descartes,
+        "casos": casos,
+        "obitos": int(tabela["obitos"].sum()),
+        "inicio_sintomas_mais_recente": mais_recente.isoformat() if mais_recente else None,
+        "periodos": sorted(tabela["periodo"].unique().to_list()),
+    }
+    _publicar(tabela, "febre_amarela", metadados, publicar)
+    return tabela
+
+
 ETAPAS = {
     "municipios": executar_municipios,
     "ubs": executar_ubs,
     "profissionais": executar_profissionais,
     "populacao": executar_populacao,
     "arboviroses": executar_arboviroses,
+    "febre_amarela": executar_febre_amarela,
 }
 
 

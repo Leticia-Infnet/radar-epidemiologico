@@ -78,8 +78,10 @@ A etapa `arboviroses` agrega dengue, chikungunya e zika dos arquivos nacionais d
 mesmo FTP: casos prováveis e óbitos por município de residência e semana epidemiológica de
 início dos sintomas, do Brasil inteiro (dengue desde 2010, chikungunya desde 2014, zika
 desde 2015). Usa o dicionário de municípios do Hub. A etapa `populacao` publica a
-população de 2022 por município, para o cálculo de incidência. O workflow `etl` roda toda
-segunda-feira, porque os arquivos preliminares do ano corrente mudam ao longo do ano.
+população de 2022 por município, para o cálculo de incidência. A etapa `febre_amarela` publica
+os casos humanos confirmados da DEMAS por período de monitoramento (julho a junho), mês e
+município provável de infecção. O workflow `etl` roda toda segunda-feira, porque os
+arquivos preliminares do ano corrente mudam ao longo do ano.
 
 Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
 publicados.

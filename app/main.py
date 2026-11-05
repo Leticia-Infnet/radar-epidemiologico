@@ -38,7 +38,7 @@ st.set_page_config(page_title="Radar Epidemiológico", page_icon="🦟", layout=
 navegacao = st.navigation(
     [
         st.Page(inicio, title="Início", default=True),
-        st.Page(PAGINAS / "1_dashboard.py", title="Dashboard"),
+        st.Page(PAGINAS / "1_dashboard.py", title="Dashboard", icon="📊"),
         st.Page(PAGINAS / "2_previsao.py", title="Previsão"),
         st.Page(PAGINAS / "3_mapa.py", title="Mapa de UBS", icon="🗺️"),
         st.Page(PAGINAS / "4_chatbot.py", title="Chatbot"),

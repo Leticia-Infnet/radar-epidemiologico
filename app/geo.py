@@ -201,8 +201,10 @@ class Modo:
 
 # O servidor de demonstração do OSRM só roteia carro; a FOSSGIS mantém os dois perfis.
 MODOS = {
-    "a_pe": Modo("a pé", "routed-foot", "foot", "fossgis_osrm_foot", "#1d4ed8"),
-    "carro": Modo("de carro", "routed-car", "driving", "fossgis_osrm_car", "#7c3aed"),
+    # Verde de mata e marrom de terra (tema do app), escuros o bastante para o mapa de
+    # base claro: contraste de 6,5:1 e 7,4:1 sobre branco. Só uma rota aparece por vez.
+    "a_pe": Modo("a pé", "routed-foot", "foot", "fossgis_osrm_foot", "#2d6a35"),
+    "carro": Modo("de carro", "routed-car", "driving", "fossgis_osrm_car", "#7a4a1f"),
 }
 
 
@@ -468,7 +470,7 @@ def mapa_ubs(
 ) -> folium.Map:
     """Mapa de base suavizado com a origem, as UBS numeradas e a rota até o destino.
 
-    `destino` é o CNES da UBS da rota, destacada em verde. `equipes` traz, por CNES, os
+    `destino` é o CNES da UBS da rota, destacada em laranja. `equipes` traz, por CNES, os
     profissionais de `equipe_unidade`.
     """
     equipes = equipes or {}
@@ -488,13 +490,18 @@ def mapa_ubs(
         [origem.latitude, origem.longitude],
         tooltip="Seu CEP",
         popup=folium.Popup(html.escape(origem.endereco or "Seu CEP"), max_width=250),
-        icon=folium.Icon(color="red", icon="home", prefix="fa"),
+        icon=folium.Icon(color="darkred", icon="home", prefix="fa"),
     ).add_to(mapa)
     for posicao, ubs in enumerate(proximas.to_dict("records"), start=1):
+        # Cores do tema: UBS em verde-escuro, o destino da rota em laranja (terra) e as
+        # de posição aproximada em bege, com o ícone escuro para continuar legível.
+        cor_icone = "white"
         if ubs["cnes"] == destino:
-            cor = "green"
+            cor = "orange"
+        elif ubs["coordenada_aproximada"]:
+            cor, cor_icone = "beige", "#4a3b2a"
         else:
-            cor = "orange" if ubs["coordenada_aproximada"] else "blue"
+            cor = "darkgreen"
         folium.Marker(
             [ubs["latitude"], ubs["longitude"]],
             tooltip=f"{posicao}. {ubs['nome']}",
@@ -502,7 +509,7 @@ def mapa_ubs(
                 _popup(posicao, ubs, detalhes.get(ubs["cnes"]), modo, equipes.get(ubs["cnes"])),
                 max_width=340,
             ),
-            icon=folium.Icon(color=cor, icon="plus-square", prefix="fa"),
+            icon=folium.Icon(color=cor, icon="plus-square", prefix="fa", icon_color=cor_icone),
         ).add_to(mapa)
     pontos = [[origem.latitude, origem.longitude]]
     pontos += proximas[["latitude", "longitude"]].values.tolist()

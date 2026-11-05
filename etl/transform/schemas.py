@@ -84,6 +84,20 @@ class ResumoSemanal(pa.DataFrameModel):
         unique = ["doenca", "local", "ano_epi", "semana_epi"]
 
 
+class FebreAmarelaMensal(pa.DataFrameModel):
+    """Casos humanos confirmados de febre amarela por período de monitoramento (julho a
+    junho), mês de início dos sintomas e município provável de infecção."""
+
+    periodo: str = pa.Field(str_matches=r"^\d{4}/\d{4}$")
+    ano_inicio_periodo: int = pa.Field(ge=1990)
+    ano: int = pa.Field(nullable=True, ge=1990)
+    mes: int = pa.Field(nullable=True, ge=1, le=12)
+    codigo_ibge6: str = pa.Field(nullable=True, str_matches=r"^\d{6}$")
+    uf_codigo: str = pa.Field(nullable=True, isin=sorted(UF_CODIGOS))
+    casos: int = pa.Field(ge=1)
+    obitos: int = pa.Field(ge=0)
+
+
 class Populacao(pa.DataFrameModel):
     """População estimada por município, usada no cálculo de incidência."""
 
