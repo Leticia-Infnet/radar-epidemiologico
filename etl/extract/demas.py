@@ -45,6 +45,7 @@ ENDPOINTS: dict[str, Endpoint] = {
     "chikungunya": Endpoint("/arboviroses/chikungunya", ("nu_ano", "id_municip")),
     "febre_amarela": Endpoint("/arboviroses/febre-amarela-humanos-primatas-nao-humanos"),
     "ubs": Endpoint("/assistencia-a-saude/unidade-basicas-de-saude"),
+    "regioes_de_saude": Endpoint("/macrorregiao-e-regiao-de-saude/municipio"),
 }
 
 
@@ -119,22 +120,28 @@ class DemasClient:
         *,
         campos: Sequence[str] | None = None,
         max_registros: int | None = None,
+        tamanho_pagina: int | None = None,
         **filtros: str | int,
     ) -> list[Registro]:
         """Percorre todas as páginas até uma vir incompleta.
 
         A primeira página vai sozinha, para que consultas pequenas custem uma requisição;
-        as seguintes vão em lotes concorrentes.
+        as seguintes vão em lotes concorrentes. Endpoints que devolvem menos registros que
+        o `limit` pedido (o de regiões de saúde para em 860) precisam de `tamanho_pagina`
+        abaixo desse teto, senão a primeira página parece a última.
         """
-        tamanho = self.settings.demas_page_size
+        tamanho = tamanho_pagina or self.settings.demas_page_size
         lote = self.settings.demas_max_concurrency
-        registros = await self.pagina(caminho, offset=0, campos=campos, **filtros)
+        registros = await self.pagina(caminho, offset=0, limit=tamanho, campos=campos, **filtros)
         completa = len(registros) == tamanho
         offset = tamanho
         while completa and not (max_registros and len(registros) >= max_registros):
             offsets = [offset + i * tamanho for i in range(lote)]
             paginas = await asyncio.gather(
-                *(self.pagina(caminho, offset=o, campos=campos, **filtros) for o in offsets)
+                *(
+                    self.pagina(caminho, offset=o, limit=tamanho, campos=campos, **filtros)
+                    for o in offsets
+                )
             )
             for pagina in paginas:
                 registros.extend(pagina)

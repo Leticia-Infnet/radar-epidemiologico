@@ -6,15 +6,15 @@ on:
       etapas:
         # municipios fica de fora: o IBGE recusa conexões do GitHub Actions. Essa etapa
         # roda localmente (ver README, seção ETL).
-        description: "Etapas separadas por espaço: ubs profissionais arboviroses"
+        description: "Etapas separadas por espaço: ubs profissionais populacao arboviroses"
         default: "ubs"
       sem_publicar:
         description: "Só extrair e validar, sem publicar no Hub"
         type: boolean
         default: false
-  # Habilitar quando as etapas estiverem implementadas.
-  # schedule:
-  #   - cron: "0 6 * * 1"  # segundas, 03h de Brasília
+  # O SINAN preliminar (PRELIM) e o CNES mudam ao longo do ano.
+  schedule:
+    - cron: "0 6 * * 1"  # segundas, 03h de Brasília
 
 # O `uv sync` de cada job instala só os grupos necessários; sem isto, o `uv run`
 # sincronizaria de novo os grupos padrão (Jupyter, matplotlib) a cada execução.
@@ -32,4 +32,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --group etl --no-default-groups
-      - run: uv run python -m etl.pipeline ${{ inputs.etapas || 'ubs profissionais arboviroses' }} ${{ inputs.sem_publicar && '--sem-publicar' || '' }}
+      - run: uv run python -m etl.pipeline ${{ inputs.etapas || 'ubs profissionais populacao arboviroses' }} ${{ inputs.sem_publicar && '--sem-publicar' || '' }}

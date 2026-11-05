@@ -1,7 +1,11 @@
 """Contratos Pandera das tabelas publicadas no Hub."""
 
+from datetime import date
+
 import pandera.polars as pa
 
+from etl.extract.datasus import AGRAVOS_SINAN as DOENCAS
+from etl.transform.aggregate import BRASIL, UF_CODIGOS
 from etl.transform.cbo import GRUPOS
 from etl.transform.normalize import LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
 
@@ -46,12 +50,43 @@ class Municipio(pa.DataFrameModel):
     regiao: str
 
 
-class NotificacoesSemanais(pa.DataFrameModel):
-    """Notificações agregadas por doença, município e semana epidemiológica."""
+class CasosSemanais(pa.DataFrameModel):
+    """Casos prováveis e óbitos por doença, município de residência e semana de início dos
+    sintomas, com zero nas semanas sem casos."""
 
-    doenca: str = pa.Field(isin=["dengue", "zika", "chikungunya", "febre_amarela"])
+    doenca: str = pa.Field(isin=list(DOENCAS))
     codigo_ibge6: str = pa.Field(str_matches=r"^\d{6}$")
+    uf_codigo: str = pa.Field(isin=sorted(UF_CODIGOS))
     ano_epi: int = pa.Field(ge=2000)
     semana_epi: int = pa.Field(ge=1, le=53)
-    notificacoes: int = pa.Field(ge=0)
+    inicio_semana: date
     casos_provaveis: int = pa.Field(ge=0)
+    obitos: int = pa.Field(ge=0)
+    semana_incompleta: bool
+
+    class Config:
+        unique = ["doenca", "codigo_ibge6", "ano_epi", "semana_epi"]
+
+
+class ResumoSemanal(pa.DataFrameModel):
+    """As mesmas séries por UF (código IBGE de 2 dígitos) e para o Brasil (`BR`)."""
+
+    doenca: str = pa.Field(isin=list(DOENCAS))
+    local: str = pa.Field(isin=[BRASIL, *sorted(UF_CODIGOS)])
+    ano_epi: int = pa.Field(ge=2000)
+    semana_epi: int = pa.Field(ge=1, le=53)
+    inicio_semana: date
+    casos_provaveis: int = pa.Field(ge=0)
+    obitos: int = pa.Field(ge=0)
+    semana_incompleta: bool
+
+    class Config:
+        unique = ["doenca", "local", "ano_epi", "semana_epi"]
+
+
+class Populacao(pa.DataFrameModel):
+    """População estimada por município, usada no cálculo de incidência."""
+
+    codigo_ibge6: str = pa.Field(unique=True, str_matches=r"^\d{6}$")
+    populacao: int = pa.Field(gt=0)
+    ano_referencia: int = pa.Field(ge=2000)

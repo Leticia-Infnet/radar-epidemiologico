@@ -7,7 +7,7 @@ from etl.extract.demas import DemasClient
 TOTAL = 2350
 
 
-def _transporte(falhas_iniciais: int = 0) -> httpx.MockTransport:
+def _transporte(falhas_iniciais: int = 0, teto: int = 1000) -> httpx.MockTransport:
     """Simula a DEMAS: offset por registro, teto de página e falhas transitórias."""
     estado = {"falhas": falhas_iniciais}
 
@@ -15,7 +15,7 @@ def _transporte(falhas_iniciais: int = 0) -> httpx.MockTransport:
         if estado["falhas"]:
             estado["falhas"] -= 1
             return httpx.Response(503)
-        limit = min(int(request.url.params["limit"]), 1000)
+        limit = min(int(request.url.params["limit"]), teto)
         offset = int(request.url.params["offset"])
         registros = [{"id": i} for i in range(offset, min(offset + limit, TOTAL))]
         return httpx.Response(200, json={"dengue": registros})
@@ -34,6 +34,18 @@ async def test_todos_percorre_todas_as_paginas():
     async with _cliente(_transporte()) as cliente:
         registros = await cliente.todos("/arboviroses/dengue")
     assert [r["id"] for r in registros] == list(range(TOTAL))
+
+
+@pytest.mark.anyio
+async def test_todos_com_teto_de_pagina_menor_que_o_limit():
+    # O endpoint de regiões de saúde devolve no máximo 860 registros por página.
+    async with _cliente(_transporte(teto=860)) as cliente:
+        incompleto = await cliente.todos("/macrorregiao-e-regiao-de-saude/municipio")
+        completo = await cliente.todos(
+            "/macrorregiao-e-regiao-de-saude/municipio", tamanho_pagina=500
+        )
+    assert len(incompleto) == 860
+    assert [r["id"] for r in completo] == list(range(TOTAL))
 
 
 @pytest.mark.anyio

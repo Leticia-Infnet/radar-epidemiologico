@@ -74,6 +74,13 @@ competência mais recente já publicada para todas as UFs e as UBS que estão no
 deve rodar depois de `ubs`. Baixa cerca de 350 MB, uma UF por vez, e publica só as
 contagens, sem nomes nem documentos dos profissionais.
 
+A etapa `arboviroses` agrega dengue, chikungunya e zika dos arquivos nacionais do SINAN no
+mesmo FTP: casos prováveis e óbitos por município de residência e semana epidemiológica de
+início dos sintomas, do Brasil inteiro (dengue desde 2010, chikungunya desde 2014, zika
+desde 2015). Usa o dicionário de municípios do Hub. A etapa `populacao` publica a
+população de 2022 por município, para o cálculo de incidência. O workflow `etl` roda toda
+segunda-feira, porque os arquivos preliminares do ano corrente mudam ao longo do ano.
+
 Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
 publicados.
 

@@ -12,10 +12,13 @@ def publicar_pasta(
     caminho_no_repo: str,
     mensagem: str,
     settings: Settings | None = None,
+    apagar: list[str] | None = None,
 ) -> str:
     """Envia uma pasta gerada no runner do CI para o repositório *dataset* do Hub.
 
-    A pasta local é temporária: existe só durante o job do GitHub Actions.
+    A pasta local é temporária: existe só durante o job do GitHub Actions. Arquivos da
+    pasta no Hub que casam com os padrões de `apagar` e não foram reenviados saem no
+    mesmo commit.
     """
     settings = settings or get_settings()
     if settings.hf_token is None:
@@ -28,5 +31,6 @@ def publicar_pasta(
         folder_path=pasta_local,
         path_in_repo=caminho_no_repo,
         commit_message=mensagem,
+        delete_patterns=apagar,
     )
     return commit.oid

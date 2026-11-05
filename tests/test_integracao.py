@@ -69,3 +69,31 @@ def test_ftp_do_datasus_tem_competencia_completa_de_profissionais():
 
     aamm = competencia_pf()
     assert len(aamm) == 4 and aamm >= "2601"
+
+
+async def test_sinan_do_ftp_bate_com_a_demas():
+    """Chikungunya de 2024 notificada e residente em Olinda: mesmas contagens nas fontes."""
+    import polars as pl
+
+    from etl.extract import datasus
+    from etl.transform.aggregate import DESCARTADOS
+
+    arquivo = next(a for a in datasus.arquivos_sinan("chikungunya", 2024) if a.ano == 2024)
+    ftp, _ = datasus.ler_sinan(arquivo, ("ID_MUNICIP", "ID_MN_RESI", "SEM_PRI", "CLASSI_FIN"))
+    ftp = ftp.filter(
+        pl.col("ID_MUNICIP") == OLINDA,
+        pl.col("ID_MN_RESI") == OLINDA,
+        pl.col("SEM_PRI").str.starts_with("2024"),
+    )
+    async with DemasClient() as cliente:
+        registros = await cliente.todos(
+            ENDPOINTS["chikungunya"].caminho, nu_ano="2024", id_municip=OLINDA
+        )
+    demas = [
+        r
+        for r in registros
+        if str(r["id_mn_resi"])[:6] == OLINDA and str(r["sem_pri"]).startswith("2024")
+    ]
+    descartados_demas = [r for r in demas if str(r["classi_fin"]).removesuffix(".0") in DESCARTADOS]
+    assert ftp.height == len(demas) > 0
+    assert ftp.filter(pl.col("CLASSI_FIN").is_in(DESCARTADOS)).height == len(descartados_demas)
