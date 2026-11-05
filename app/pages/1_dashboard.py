@@ -9,7 +9,7 @@ from datetime import date
 
 import streamlit as st
 
-from app import data, graficos, painel
+from app import data, estilo, graficos, painel
 from app.painel import BRASIL, DOENCAS, FEBRE_AMARELA, UFS
 
 GRAFICO = {"width": "stretch", "config": {"displayModeBar": False}}
@@ -47,19 +47,20 @@ def painel_arboviroses(doenca, uf, municipio, local, nome_local, coluna_ano) -> 
 
     st.subheader(f"{DOENCAS[doenca]} · {nome_local} · {ano}")
     tile_casos, tile_incidencia, tile_pico, tile_obitos = st.columns(4)
-    variacao = None
+    variacao, comparacao = None, ""
     if numeros.variacao is not None:
-        variacao = (
-            f"{painel.formatar_variacao(numeros.variacao)} em relação a {ano - 1}, "
-            f"até a semana {numeros.semana_comparada}"
+        variacao = f"{painel.formatar_variacao(numeros.variacao)} sobre {ano - 1}"
+        comparacao = (
+            f" A variação compara com {ano - 1} até a semana {numeros.semana_comparada}, "
+            "só com semanas completas."
         )
     tile_casos.metric(
         "Casos prováveis",
         painel.formatar_inteiro(numeros.casos),
         delta=variacao,
         delta_color="inverse",
-        help="Notificações não descartadas: confirmadas, em investigação ou inconclusivas. "
-        "A comparação com o ano anterior usa só semanas completas.",
+        help="Notificações não descartadas: confirmadas, em investigação ou inconclusivas."
+        + comparacao,
     )
     tile_incidencia.metric(
         "Incidência por 100 mil habitantes",
@@ -236,6 +237,7 @@ def painel_febre_amarela(uf, municipio, local, nome_local, coluna_periodo) -> No
     )
 
 
+estilo.aplicar(estilo.BASE, estilo.DASHBOARD)
 st.title("📊 Arboviroses no Brasil")
 st.caption("Dengue, chikungunya, zika e febre amarela nos dados abertos do Ministério da Saúde.")
 

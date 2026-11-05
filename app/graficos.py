@@ -39,7 +39,7 @@ PALETAS = {
         foco="#5ca965",
         referencia="#6f6452",
         faixa="rgba(111, 100, 82, 0.35)",
-        incompletas="rgba(236, 230, 214, 0.07)",
+        incompletas="rgba(235, 233, 228, 0.07)",
         rotulo="#a89c86",
     ),
 }
@@ -50,10 +50,12 @@ def paleta(tema: str | None) -> Paleta:
     return PALETAS["dark" if tema == "dark" else "light"]
 
 
+# Fonte de 15 px nos gráficos (o Plotly usa 12), acompanhando o texto das páginas.
 _LAYOUT = {
     "separators": ",.",
-    "margin": {"l": 8, "r": 8, "t": 40, "b": 8},
-    "font": {"family": 'system-ui, -apple-system, "Segoe UI", sans-serif'},
+    "margin": {"l": 8, "r": 8, "t": 44, "b": 8},
+    "font": {"family": 'system-ui, -apple-system, "Segoe UI", sans-serif', "size": 15},
+    "hoverlabel": {"font": {"size": 15}},
 }
 
 
@@ -136,7 +138,7 @@ def grafico_semanal(
             layer="below",
             annotation_text="incompletas",
             annotation_position="top left",
-            annotation_font={"color": cores.rotulo, "size": 12},
+            annotation_font={"color": cores.rotulo, "size": 14},
         )
 
     maximos = [do_ano["casos_provaveis"].max(), faixa["p75"].max() if not faixa.empty else 0]

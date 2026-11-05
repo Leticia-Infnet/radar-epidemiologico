@@ -46,10 +46,8 @@ def test_brasil_por_padrao(sem_rede):
     app = _abrir()
     assert not app.exception
     assert app.subheader[0].value == "Dengue · Brasil · 2025"
-    assert _metricas(app)["Casos prováveis"] == (
-        "265",
-        "-49,0% em relação a 2024, até a semana 53",
-    )
+    assert _metricas(app)["Casos prováveis"] == ("265", "-49,0% sobre 2024")
+    assert "até a semana 53" in app.metric[0].help
     # População do Brasil na tabela sintética: 1.864.000.
     assert _metricas(app)["Incidência por 100 mil habitantes"][0] == "14,2"
     assert app.selectbox[2].disabled

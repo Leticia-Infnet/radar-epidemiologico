@@ -220,6 +220,14 @@ O diagrama visual está em `arquitetura-arboviroses.jpg`.
 ### Visualização
 - **Plotly** para as séries temporais interativas.
 - **Folium** + `streamlit-folium` para o mapa, com tiles OpenStreetMap (sem chave).
+- Tema em `.streamlit/config.toml`: destaques verde e marrom; fundo areia no modo claro e
+  preto (`#111111`) no escuro. Cores dos gráficos em `app/graficos.PALETAS`, uma por modo.
+  Toda cor nova passa pelas checagens da skill de visualização (contraste WCAG e
+  separação para daltonismo); o validador da skill é JavaScript e o ambiente não tem
+  Node, então as checagens foram reproduzidas em Python.
+- Fonte maior que o padrão em todas as páginas (`app/estilo.py`): texto a 1,15 rem,
+  legendas a 1,05 rem, gráficos a 15 px. As regras CSS usam os `data-testid` do
+  Streamlit 1.66; ao atualizar o Streamlit, conferir se continuam valendo.
 
 ### Machine learning
 - `scikit-learn` e `statsmodels`.
@@ -336,9 +344,10 @@ tem visão própria no mesmo seletor de doença:
 - Casos sem município (7) ou sem mês (11) entram nos totais, não na tabela nem no gráfico
   por mês.
 
-**Tema visual** (mesma branch): verdes de mata e marrons de terra em todas as páginas,
-pelo `.streamlit/config.toml` (`[theme.light]` e `[theme.dark]`). Texto sobre fundo acima
-de 12:1 nos dois modos. Nos gráficos (`graficos.PALETAS`, escolhida por
+**Tema visual** (mesma branch): verdes de mata e marrons de terra nos destaques de todas
+as páginas, pelo `.streamlit/config.toml` (`[theme.light]` e `[theme.dark]`). Fundo areia
+no modo claro; no escuro, fundos pretos e cinzas neutros (`#111111` e `#1c1c1c`), a
+pedido da usuária. Texto sobre fundo acima de 12:1 nos dois modos. Nos gráficos (`graficos.PALETAS`, escolhida por
 `st.context.theme.type`), o foco é verde e o histórico, marrom-acinzentado; como verde e
 marrom de mesma luminosidade se confundem no daltonismo vermelho-verde, a separação vem
 da luminosidade (validada: CVD 18,5 no claro e 16,2 no escuro). No mapa, rota a pé verde
@@ -519,6 +528,7 @@ metadados.
 │   │   └── 4_chatbot.py
 │   ├── data.py              # carregamento do Hub + cache
 │   ├── geo.py               # CEP, BallTree, Folium
+│   ├── estilo.py            # tamanho de fonte das páginas (CSS)
 │   ├── painel.py            # cálculos do dashboard (indicadores, faixa histórica, ranking)
 │   └── graficos.py          # gráficos Plotly do dashboard, com as paletas do tema
 ├── .streamlit/config.toml   # tema verde e marrom (claro e escuro)
@@ -563,7 +573,7 @@ Situação em 2026-11-04 entre colchetes.
 2. [Feito] ETL de UBS completo (dataset menor, valida o pipeline ponta a ponta) e publicação no Hub.
 3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
-5. [Feito, branch `feature/dashboard`] Feature 1, o dashboard.
+5. [Feito, PR #5] Feature 1, o dashboard, com febre amarela e o tema visual.
 6. [Pendente] Feature 2, previsão, começando pelo baseline sazonal.
 7. [Pendente] Feature 4, o chatbot RAG.
 
@@ -592,14 +602,14 @@ Situação em 2026-11-04 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-11-04.
+Atualizado em 2026-11-05.
 
 ### Onde as coisas estão
 
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022) e `arboviroses/` (12.061.215 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-10-27), cada um com `metadados.json` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.061.215 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-10-27) e `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
 | Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
 | Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
@@ -614,17 +624,23 @@ Atualizado em 2026-11-04.
 - Rodar o app: `uv run streamlit run app/main.py --server.headless true` e abrir
   `http://localhost:8501` no Windows.
 - Não há navegador headless no ambiente (faltam bibliotecas do sistema, sem `sudo`): para
-  checar visual, gerar prévias com os tiles reais ou pedir à usuária.
+  checar visual, gerar prévias com os tiles reais ou pedir à usuária. Fluxo usado: subir
+  o app em segundo plano, a usuária confere no navegador do Windows (às vezes manda
+  captura de tela) e só então vêm commit, PR e merge. Mudanças no `config.toml` exigem
+  reiniciar o servidor do Streamlit.
+- `AppTest` com os dados reais do Hub (simulando só o que ainda não foi publicado) é a
+  forma de conferir números e erros das páginas sem navegador.
 
 ### O que está implementado
 
 - `etl/`: cliente DEMAS (paginação, retry, contagem por busca binária), normalização,
-  calendário epidemiológico, contratos Pandera, pipeline `municipios`, `ubs` e
-  `profissionais`, `populacao` e `arboviroses` (FTP do DATASUS) com piso de linhas e
-  `--sem-publicar`.
+  calendário epidemiológico, contratos Pandera, pipeline `municipios`, `ubs`,
+  `profissionais`, `populacao`, `arboviroses` (FTP do DATASUS) e `febre_amarela` (DEMAS),
+  com piso de linhas e `--sem-publicar`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
-- `app/`: página inicial, dashboard de arboviroses e mapa de UBS completos; previsão e
-  chatbot são esqueletos "em construção".
+- `app/`: página inicial, dashboard (dengue, chikungunya, zika e febre amarela) e mapa de
+  UBS completos, com o tema verde e marrom; previsão e chatbot são esqueletos "em
+  construção".
 - `ml/`: atributos (Fourier, lags, médias móveis), baseline sazonal, MAE e MASE; treino pendente.
 - `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
   o resto são esqueletos. `rag/fontes.yaml` está vazio.
@@ -635,11 +651,12 @@ Atualizado em 2026-11-04.
 
 ### Próximos passos combinados
 
-1. Dashboard com febre amarela e tema verde e marrom (seção 7.1), na branch
-   `feature/dashboard`: verificação visual da usuária, publicação de `febre_amarela/`,
-   PR e merge. Depois: mapa coroplético.
-2. Feature 2, previsão (seção 7.2), começando pelo baseline sazonal sobre as séries de
-   `arboviroses/`.
-3. Profissionais por UBS: possível evolução, filtrar o mapa por ocupação (por exemplo, a
-   UBS mais próxima com pediatra).
+1. Feature 2, previsão (seção 7.2, etapa 6), começando pelo baseline sazonal sobre as
+   séries semanais de `arboviroses/`. Lembrar: sazonalidade regional, sobredispersão
+   (binomial negativa), semanas incompletas fora do treino, `TimeSeriesSplit`.
+2. Feature 4, o chatbot RAG (seção 7.4); falta a lista de manuais em `rag/fontes.yaml`.
+3. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
+   população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
+4. Atualizar o diagrama de arquitetura em `docs/` (ainda mostra o HF Spaces; agora há o
+   FTP do DATASUS como fonte).
 
