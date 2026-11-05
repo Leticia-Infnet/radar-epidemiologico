@@ -551,7 +551,7 @@ Atualizado em 2026-11-04.
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571) e `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), cada um com `metadados.json` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022) e `arboviroses/` (12.061.215 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-10-27), cada um com `metadados.json` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
 | Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
 | Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
@@ -586,8 +586,8 @@ Atualizado em 2026-11-04.
 
 ### Próximos passos combinados
 
-1. Etapa A (ETL de arboviroses): rodar no Actions, publicar e fazer o PR da branch
-   `feature/etl-arboviroses`.
+1. Etapa A (ETL de arboviroses): publicada no Hub; PR #4 da branch
+   `feature/etl-arboviroses`, aguardando a verificação da usuária antes do merge.
 2. Etapa B: página do dashboard, na branch `feature/dashboard`. Plano: filtros de doença,
    local (Brasil, UF ou município) e ano; indicadores (casos prováveis, incidência por
    100 mil, variação até a mesma semana do ano anterior, semana de pico, óbitos); curva
