@@ -4,7 +4,10 @@ Comportamento verificado contra a API em 2026-10-28:
 
 - nenhum dos endpoints usados exige autenticação;
 - `limit` aceita até 1000; valores maiores são truncados para 1000 sem erro;
-- `offset` desloca por registro, embora o Swagger o descreva como número da página;
+- `offset` mudou de sentido sem aviso: em 2026-10-28 deslocava por registro; em
+  2026-11-11 passou a contar páginas, como o Swagger descreve (`limit=1000&offset=2`
+  começa no registro 2000). `DemasClient.todos` descobre o sentido a cada consulta; com
+  `limit=1` os dois coincidem, o que mantém `contar` correto;
 - `campos` restringe as colunas, mas torna a consulta muito mais lenta no servidor
   (36 s com limit=10, e HTTP 502 por timeout do gateway com limit=100); sem ele, uma
   página de 1000 registros filtrada por município e ano leva de 1 a 2 s. Não use;
@@ -14,6 +17,7 @@ Comportamento verificado contra a API em 2026-10-28:
 """
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +33,11 @@ from tenacity import (
 from common.config import Settings, get_settings
 
 Registro = dict[str, Any]
+
+log = logging.getLogger(__name__)
+
+# Registros comparados para descobrir se o `offset` conta registros ou páginas.
+_AMOSTRA = 5
 
 
 @dataclass(frozen=True)
@@ -55,6 +64,17 @@ def _deve_repetir(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 429 or exc.response.status_code >= 500
     return False
+
+
+def _offset_conta_registros(primeira: list[Registro], segunda: list[Registro]) -> bool:
+    """Diz se a página pedida com `offset=1` é a primeira deslocada de um registro.
+
+    Se o `offset` conta páginas, ela começa onde a primeira termina e não a repete.
+    Compara uma sequência de registros, e não só o primeiro, porque a DEMAS tem linhas
+    idênticas em sequência (as duas primeiras da febre amarela, por exemplo).
+    """
+    n = min(_AMOSTRA, len(primeira) - 1, len(segunda))
+    return n > 0 and segunda[:n] == primeira[1 : n + 1]
 
 
 class DemasClient:
@@ -125,36 +145,54 @@ class DemasClient:
     ) -> list[Registro]:
         """Percorre todas as páginas até uma vir incompleta.
 
-        A primeira página vai sozinha, para que consultas pequenas custem uma requisição;
-        as seguintes vão em lotes concorrentes. Endpoints que devolvem menos registros que
-        o `limit` pedido (o de regiões de saúde para em 860) precisam de `tamanho_pagina`
-        abaixo desse teto, senão a primeira página parece a última.
+        A primeira página vai sozinha, para que consultas pequenas custem uma requisição.
+        Se ela vier cheia, a de `offset=1` também vai sozinha e mostra o que o `offset`
+        conta: se ela repete a primeira deslocada de um registro, o `offset` conta
+        registros e ela é descartada; senão, é a segunda página. As seguintes vão em
+        lotes concorrentes. Endpoints que devolvem menos registros que o `limit` pedido
+        (o de regiões de saúde para em 860) precisam de `tamanho_pagina` abaixo desse
+        teto, senão a primeira página parece a última.
         """
         tamanho = tamanho_pagina or self.settings.demas_page_size
         lote = self.settings.demas_max_concurrency
-        registros = await self.pagina(caminho, offset=0, limit=tamanho, campos=campos, **filtros)
-        completa = len(registros) == tamanho
-        offset = tamanho
-        while completa and not (max_registros and len(registros) >= max_registros):
-            offsets = [offset + i * tamanho for i in range(lote)]
-            paginas = await asyncio.gather(
-                *(
-                    self.pagina(caminho, offset=o, limit=tamanho, campos=campos, **filtros)
-                    for o in offsets
-                )
+
+        async def buscar(offset: int) -> list[Registro]:
+            return await self.pagina(
+                caminho, offset=offset, limit=tamanho, campos=campos, **filtros
             )
+
+        def basta() -> bool:
+            return bool(max_registros) and len(registros) >= max_registros
+
+        registros = await buscar(0)
+        completa = len(registros) == tamanho
+        # A página de número `indice` fica em offset = indice * passo.
+        passo, indice = 1, 1
+        if completa and not basta():
+            segunda = await buscar(1)
+            if _offset_conta_registros(registros, segunda):
+                log.info("%s: o offset conta registros, não páginas", caminho)
+                passo = tamanho
+            else:
+                registros.extend(segunda)
+                completa = len(segunda) == tamanho
+                indice = 2
+        while completa and not basta():
+            paginas = await asyncio.gather(*(buscar((indice + i) * passo) for i in range(lote)))
             for pagina in paginas:
                 registros.extend(pagina)
                 if len(pagina) < tamanho:
                     completa = False
                     break
-            offset += lote * tamanho
+            indice += lote
         return registros[:max_registros] if max_registros else registros
 
     async def contar(self, caminho: str, **filtros: str | int) -> int:
         """Conta os registros por busca exponencial e binária sobre o offset.
 
         A API não expõe contagem; isto custa cerca de 2·log2(N) requisições de 1 registro.
+        Com `limit=1`, a página de número N é o registro N, seja qual for o sentido do
+        `offset`.
         """
 
         async def existe(posicao: int) -> bool:

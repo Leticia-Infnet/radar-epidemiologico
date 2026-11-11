@@ -34,7 +34,9 @@ gratuito. Nada de banco local, nada de `data/` versionado com CSVs grandes.
 >   sem token. O ETL não precisa de passo de login.
 > - **`limit` vai até 1000**, não 20 (o Swagger em `/static/swagger.json` diz "menor ou
 >   igual 1000"; acima disso o servidor trunca para 1000 sem erro).
-> - **`offset` desloca por registro**, embora o Swagger o descreva como número da página.
+> - **`offset` mudou de sentido sem aviso**: em 2026-10-28 deslocava por registro; em
+>   2026-11-11 já contava páginas, como o Swagger descreve (`limit=1000&offset=2` começa
+>   no registro 2000). `DemasClient.todos` descobre o sentido a cada consulta.
 > - Filtros: `nu_ano` e `id_municip` (dengue, chikungunya, zika). `id_municip` é o
 >   município da **unidade notificadora** e só aceita o código IBGE de **6 dígitos**.
 >   Febre amarela e UBS não têm filtros.
@@ -484,6 +486,8 @@ metadados.
 | A DEMAS repete linhas idênticas de febre amarela (32 de 2.913) | Remover as repetidas no ETL `febre_amarela` |
 | Eixo de contagens pequenas no Plotly ganha marcas fracionárias, que o formato inteiro mostra como "0, 0, 1" | `graficos._eixo_y`: marcas de 1 em 1 até 10 |
 | `/macrorregiao-e-regiao-de-saude/municipio` devolve no máximo 860 registros por página, mesmo com `limit=1000`, e o cliente tomava a página curta pela última | `DemasClient.todos(..., tamanho_pagina=500)`; o piso de linhas pegou o erro |
+| A DEMAS mudou o sentido do `offset` de registro para página entre 2026-11-05 e 2026-11-11, sem aviso: o cliente pedia a página 1000, recebia lista vazia e parava na primeira página (o piso de linhas barrou a febre amarela com 994 casos) | `DemasClient.todos` pede `offset=1` depois da primeira página cheia e vê se ela repete a primeira deslocada de um registro; funciona nos dois sentidos. Com `limit=1` (`contar`) eles coincidem |
+| GitHub Actions recusou os jobs com "account is locked due to a billing issue" numa conta Free sem nada a pagar (2026-11-09): o GitHub exige um meio de pagamento cadastrado | Meio de pagamento cadastrado em 2026-11-11; os orçamentos de $0 com uso bloqueado (Actions, Git LFS, Packages, Codespaces e IA) impedem cobrança. O Actions de repositório público não entra nesses orçamentos |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
 
 ---
