@@ -382,7 +382,7 @@ confiança visível. Não apresentar como previsão oficial.
 
 O modelo é treinado no CI e apenas carregado pela aplicação. **Nunca treinar em request.**
 
-**Implementado** (branch `feature/previsao`, 2026-11-11), em `ml/` (treino no CI),
+**Implementado** (PR #7, 2026-11-11), em `ml/` (treino no CI),
 `app/tendencia.py` (cálculos, sem Streamlit), `app/graficos.py` e `app/pages/2_previsao.py`:
 
 - Recorte (decisões da usuária em 2026-11-11): **dengue e chikungunya**; Brasil, 27 UFs e
@@ -422,7 +422,10 @@ O modelo é treinado no CI e apenas carregado pela aplicação. **Nunca treinar 
   superar os dois baselines em algum grupo, se faltarem séries ou passos, ou se houver
   estimativa vazia ou negativa.
 - Workflow `train`: dispara ao fim de cada `etl` concluído com sucesso e manualmente (com
-  `sem_publicar`). Cerca de 7 minutos e pico de 6,4 GB de memória na carga local.
+  `sem_publicar`). Cerca de 7 minutos e pico de 6,4 GB de memória na carga local; no
+  runner do Actions, 4 min 48 s com `sem_publicar` e os mesmos números (2026-11-12). A
+  primeira `previsao/` do Hub veio de um treino local; a publicação a partir do runner e o
+  disparo automático depois do `etl` ainda não foram vistos funcionando (seção 13).
 - Página "Tendência": filtros de doença, local e município; indicadores (nível atual,
   estimativa da última semana com a variação, intervalo de 90% e tendência); gráfico com
   as 26 últimas semanas completas, a estimativa tracejada, as faixas de 50% e 90% e o
@@ -545,7 +548,7 @@ metadados.
 | MASE com a escala só do período de treino explode nos municípios em que a doença chegou depois (chikungunya: mediana de 8,9 para o próprio baseline) | Escala do baseline sazonal na série completa (`evaluate.escalas_sazonais`) |
 | O GLM do `statsmodels` com 1 milhão de linhas guarda várias cópias da matriz (4,5 GB num ajuste; 14 GB no backtest inteiro) | `modelos.BinomialNegativa` ajusta numa amostra de 250 mil linhas |
 | As semanas recentes da dengue **caem** depois de "completas": entre os cortes de 2026-10-27 e 2026-11-10, as semanas 36 a 40 perderam de 6% a 12% dos casos prováveis (suspeitos descartados depois). O dado parcial de uma semana incompleta não é um piso | Não forçar a estimativa para cima do dado parcial; a página explica que ele muda nos dois sentidos. As versões antigas ficam no histórico Git do dataset no Hub |
-| `workflow_run` só dispara pelo arquivo de workflow que está na branch padrão | O `train` automático passa a valer depois do merge; antes disso, disparo manual |
+| `workflow_run` só dispara pelo arquivo de workflow que está na branch padrão | Ao mudar o gatilho de um workflow numa branch, testar com disparo manual; o automático só vale depois do merge |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
 
 ---
@@ -640,7 +643,7 @@ Situação em 2026-11-11 entre colchetes.
 3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
 5. [Feito, PR #5] Feature 1, o dashboard, com febre amarela e o tema visual.
-6. [Feito, branch `feature/previsao`] Feature 2, a estimativa de tendência (seção 7.2).
+6. [Feito, PR #7] Feature 2, a estimativa de tendência (seção 7.2).
 7. [Pendente] Feature 4, o chatbot RAG.
 
 ---
@@ -673,7 +676,7 @@ Situação em 2026-11-11 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-11-11.
+Atualizado em 2026-11-12.
 
 ### Onde as coisas estão
 
@@ -682,7 +685,7 @@ Atualizado em 2026-11-11.
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
 | Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-11), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
-| Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
+| Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF`. Em 2026-11-12: 226,00 horas em 9 fases, as últimas "Manutenção do ETL" (PR #6) e "Estimativa de tendência" (PR #7). Como lançar: ver "Planilha de horas" abaixo |
 | Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
 
 ### Ambiente da usuária
@@ -699,8 +702,34 @@ Atualizado em 2026-11-11.
   o app em segundo plano, a usuária confere no navegador do Windows (às vezes manda
   captura de tela) e só então vêm commit, PR e merge. Mudanças no `config.toml` exigem
   reiniciar o servidor do Streamlit.
+- Para derrubar o app local, `pkill -f "streamlit run"` funciona, mas mata também o shell
+  que o chamou (o comando sai com código 144): rodar sozinho e conferir a porta 8501 em
+  outro comando.
+- Publicar no Hub a partir da máquina dela (`python -m etl.pipeline ...` ou
+  `python -m ml.train` sem `--sem-publicar`) é ação externa: pedir o aval antes, como
+  commit e merge. Para conferir uma página que depende de tabela nova, a tabela precisa
+  estar no Hub; publicar pasta nova não afeta o app em produção, que a ignora.
+- Processos longos (treino, ETL) vão em segundo plano, com saída em arquivo temporário da
+  sessão; nada de dados em disco no repositório.
 - `AppTest` com os dados reais do Hub (simulando só o que ainda não foi publicado) é a
   forma de conferir números e erros das páginas sem navegador.
+
+### Planilha de horas
+
+A usuária pede o lançamento depois do merge de cada etapa. O agente estima as horas por
+atividade, na granularidade das fases anteriores (de 1,5 a 8,5 horas por linha; uma
+funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela ajusta.
+
+- Colunas: Fase, Atividade, Entregável, Horas registradas. As horas são números, em azul
+  (valor editável); os entregáveis repetem os nomes já usados.
+- Inserir as linhas novas logo depois da última linha de atividades, herdando o formato
+  da linha de cima. Se as linhas entram **dentro** do intervalo do `SUMIF`, as fórmulas do
+  resumo se ajustam sozinhas; se entram **depois** da última linha do intervalo, é preciso
+  reescrever os intervalos. Conferir as fórmulas depois de inserir.
+- Fase nova: inserir também uma linha no "Resumo por fase", antes do Total, com
+  `=SUMIF($A$5:$A$<última>;$A<linha>;$D$5:$D$<última>)` (separador `;`), e conferir se o
+  `SUM` do Total a alcança.
+- Reler o intervalo no fim e conferir o total.
 
 ### O que está implementado
 
@@ -724,6 +753,11 @@ Atualizado em 2026-11-11.
 
 ### Próximos passos combinados
 
+0. Conferir o `train` automático: o primeiro disparo por `workflow_run` deve vir depois do
+   `etl` agendado de segunda, 2026-11-16 (aba Actions; `gh run list --workflow train.yml`).
+   Ver se ele publicou `previsao/` pelo runner (`treinado_em` e `corte` novos no
+   `previsao/metadados.json`) e se a página Tendência do app em produção abre com esses
+   dados. Se o `etl` falhar, o `train` não roda e as estimativas ficam com o corte antigo.
 1. Feature 4, o chatbot RAG (seção 7.4); falta a lista de manuais em `rag/fontes.yaml`.
 2. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
    população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
