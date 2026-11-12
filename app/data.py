@@ -99,6 +99,31 @@ def febre_amarela() -> pd.DataFrame:
     return ler_parquet("febre_amarela/febre_amarela.parquet")
 
 
+@st.cache_resource(ttl=86400, show_spinner="Carregando as estimativas...")
+def estimativas() -> pd.DataFrame | None:
+    """Estimativas de tendência por doença, local e semana, geradas pelo treino no CI.
+
+    Devolve None se a tabela ainda não estiver no Hub.
+    """
+    try:
+        tabela = ler_parquet("previsao/estimativas.parquet")
+    except (FileNotFoundError, OSError) as exc:
+        log.warning("Estimativas de tendência indisponíveis: %s", exc)
+        return None
+    tabela["inicio_semana"] = pd.to_datetime(tabela["inicio_semana"])
+    return tabela
+
+
+@st.cache_resource(ttl=86400, show_spinner=False)
+def metricas_previsao() -> pd.DataFrame | None:
+    """Erro de cada modelo no backtest, por doença, local e passo; None se não publicado."""
+    try:
+        return ler_parquet("previsao/metricas.parquet")
+    except (FileNotFoundError, OSError) as exc:
+        log.warning("Métricas do backtest indisponíveis: %s", exc)
+        return None
+
+
 def _tipos_compactos(tabela: pd.DataFrame) -> pd.DataFrame:
     """Inteiros de 32 bits e datas como datetime64, para ocupar menos memória."""
     return tabela.astype(

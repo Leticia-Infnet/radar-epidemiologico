@@ -31,6 +31,8 @@ def sem_rede(monkeypatch):
     monkeypatch.setattr(data, "populacao", lambda: POPULACAO)
     monkeypatch.setattr(data, "resumo_arboviroses", lambda: RESUMO)
     monkeypatch.setattr(data, "casos_uf", lambda doenca, uf: CASOS_PE)
+    # A página de tendência abre com as demais em `test_app`; sem estimativas, ela avisa.
+    monkeypatch.setattr(data, "estimativas", lambda: None)
 
 
 def _abrir() -> AppTest:

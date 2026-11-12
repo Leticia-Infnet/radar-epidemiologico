@@ -7,6 +7,8 @@ da luminosidade: no tema claro o verde é escuro e o marrom, claro; no escuro, o
 Pares validados com as checagens da skill de visualização (OKLab, simulação de Machado):
 CVD 18,5 no claro e 16,2 no escuro, acima do alvo de 8. O histórico fica abaixo de 3:1
 contra o fundo claro, como contexto; legenda e tabela carregam a identificação.
+A faixa da estimativa de tendência é o próprio verde do foco, translúcido: mesmo com as
+duas faixas sobrepostas, a linha verde mantém contraste de 3,8:1 (claro) e 3,5:1 (escuro).
 Separadores brasileiros (vírgula decimal, ponto de milhar) em eixos e dicas.
 """
 
@@ -25,6 +27,7 @@ class Paleta:
     faixa: str  # intervalo interquartil, um véu sobre o fundo
     incompletas: str  # sombra das semanas incompletas
     rotulo: str  # texto discreto dentro do gráfico
+    intervalo: str  # faixa da estimativa: o foco translúcido, sobreposto no intervalo de 50%
 
 
 PALETAS = {
@@ -34,6 +37,7 @@ PALETAS = {
         faixa="rgba(168, 151, 124, 0.25)",
         incompletas="rgba(107, 93, 74, 0.10)",
         rotulo="#6b5d4a",
+        intervalo="rgba(45, 106, 53, 0.16)",
     ),
     "dark": Paleta(
         foco="#5ca965",
@@ -41,6 +45,7 @@ PALETAS = {
         faixa="rgba(111, 100, 82, 0.35)",
         incompletas="rgba(235, 233, 228, 0.07)",
         rotulo="#a89c86",
+        intervalo="rgba(92, 169, 101, 0.20)",
     ),
 }
 
@@ -235,5 +240,117 @@ def grafico_meses(por_mes: pd.DataFrame, tema: str | None = "light") -> go.Figur
         showlegend=False,
         xaxis={"type": "category", "showgrid": False},
         yaxis=_eixo_y("Casos confirmados", por_mes["casos"].max()),
+    )
+    return figura
+
+
+def grafico_tendencia(
+    recente: pd.DataFrame, estimativa: pd.DataFrame, tema: str | None = "light"
+) -> go.Figure:
+    """Semanas recentes observadas e a estimativa de tendência com seus intervalos.
+
+    Linha cheia: semanas completas. Linha tracejada: a estimativa, que parte da última
+    semana completa, com as faixas de 90% e de 50%. As semanas incompletas ficam
+    sombreadas e mostram, em marrom, o dado parcial já publicado.
+    """
+    cores = paleta(tema)
+    completas = recente[~recente["parcial"]]
+    parciais = recente[recente["parcial"]]
+    ancora = completas.tail(1)
+    # A estimativa e as faixas partem do último ponto observado, para não deixar um vão.
+    x = pd.concat([ancora["inicio_semana"], estimativa["inicio_semana"]])
+    partida = ancora["casos_provaveis"].astype(float)
+
+    def com_partida(coluna: str) -> pd.Series:
+        return pd.concat([partida, estimativa[coluna]])
+
+    figura = go.Figure()
+    for inferior, superior, nome in (("p05", "p95", "90%"), ("p25", "p75", "50%")):
+        figura.add_scatter(
+            x=x,
+            y=com_partida(superior),
+            mode="lines",
+            line={"width": 0},
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        figura.add_scatter(
+            x=x,
+            y=com_partida(inferior),
+            mode="lines",
+            line={"width": 0},
+            fill="tonexty",
+            fillcolor=cores.intervalo,
+            name=f"Intervalo de {nome}",
+            hoverinfo="skip",
+        )
+    figura.add_scatter(
+        x=completas["inicio_semana"],
+        y=completas["casos_provaveis"],
+        customdata=completas["semana_epi"],
+        mode="lines",
+        line={"color": cores.foco, "width": 2},
+        name="Observado",
+        hovertemplate="Observado na semana %{customdata}: %{y:,d} casos<extra></extra>",
+    )
+    figura.add_scatter(
+        x=x,
+        y=com_partida("estimativa"),
+        mode="lines",
+        line={"color": cores.foco, "width": 2, "dash": "dash"},
+        showlegend=False,
+        hoverinfo="skip",
+    )
+    figura.add_scatter(
+        x=estimativa["inicio_semana"],
+        y=estimativa["estimativa"],
+        customdata=estimativa[["semana_epi", "p05", "p95"]],
+        mode="lines+markers",
+        line={"color": cores.foco, "width": 2, "dash": "dash"},
+        marker={"size": 8, "color": cores.foco},
+        name="Estimativa",
+        hovertemplate=(
+            "Estimativa para a semana %{customdata[0]}: %{y:,.0f} casos "
+            "(90%: %{customdata[1]:,.0f} a %{customdata[2]:,.0f})<extra></extra>"
+        ),
+    )
+    if not parciais.empty:
+        figura.add_scatter(
+            x=parciais["inicio_semana"],
+            y=parciais["casos_provaveis"],
+            mode="lines+markers",
+            line={"color": cores.referencia, "width": 2, "dash": "dot"},
+            marker={"size": 8, "color": cores.referencia},
+            name="Dado parcial",
+            hovertemplate="Dado parcial já publicado: %{y:,d} casos<extra></extra>",
+        )
+    incompletas = estimativa[estimativa["incompleta"]]
+    if not incompletas.empty:
+        meia_semana = pd.Timedelta(days=3.5)
+        figura.add_vrect(
+            x0=incompletas["inicio_semana"].min() - meia_semana,
+            x1=incompletas["inicio_semana"].max() + meia_semana,
+            fillcolor=cores.incompletas,
+            line_width=0,
+            layer="below",
+            annotation_text="incompletas",
+            annotation_position="top left",
+            annotation_font={"color": cores.rotulo, "size": 14},
+        )
+
+    maximo = max(recente["casos_provaveis"].max(), estimativa["p95"].max())
+    figura.update_layout(
+        **_LAYOUT,
+        hovermode="x unified",
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+        xaxis={
+            "title": "Semana epidemiológica de início dos sintomas (data do domingo)",
+            "tickformat": "%d/%m",
+            "hoverformat": "Semana de %d/%m/%Y",
+            "dtick": 28 * 24 * 3600 * 1000,  # uma marca a cada 4 semanas
+            "tick0": recente["inicio_semana"].min(),
+            "showgrid": False,
+        },
+        yaxis=_eixo_y("Casos prováveis", maximo),
     )
     return figura
