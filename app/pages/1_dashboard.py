@@ -9,35 +9,17 @@ from datetime import date
 
 import streamlit as st
 
-from app import data, estilo, graficos, painel
+from app import data, estilo, filtros, graficos, painel
 from app.painel import BRASIL, DOENCAS, FEBRE_AMARELA, UFS
 
 GRAFICO = {"width": "stretch", "config": {"displayModeBar": False}}
-
-
-def _tema() -> str | None:
-    """Modo do tema ativo (`light` ou `dark`), para as cores dos gráficos."""
-    try:
-        return st.context.theme.type
-    except AttributeError:
-        return None
-
-
-def _escolher(coluna, rotulo: str, opcoes: list, chave: str):
-    """Selectbox que mantém a escolha anterior quando a lista de opções muda, se possível."""
-    preferido = st.session_state.get(chave)
-    escolha = coluna.selectbox(
-        rotulo, opcoes, index=opcoes.index(preferido) if preferido in opcoes else 0
-    )
-    st.session_state[chave] = escolha
-    return escolha
 
 
 def painel_arboviroses(doenca, uf, municipio, local, nome_local, coluna_ano) -> None:
     """Dengue, chikungunya e zika: série semanal de casos prováveis."""
     info = data.metadados("arboviroses")["doencas"][doenca]
     ultimo_ano = int(info["ultima_semana"].split("-")[0])
-    ano = _escolher(
+    ano = filtros.escolher(
         coluna_ano, "Ano", list(range(ultimo_ano, info["ano_inicial"] - 1, -1)), "ano_preferido"
     )
     municipios, populacao = data.municipios(), data.populacao()
@@ -93,12 +75,12 @@ def painel_arboviroses(doenca, uf, municipio, local, nome_local, coluna_ano) -> 
             f"{anos_da_faixa[-1]} e a faixa onde ficou metade desses anos em cada semana."
         )
     st.plotly_chart(
-        graficos.grafico_semanal(serie, ano, faixa, anos_da_faixa, tema=_tema()), **GRAFICO
+        graficos.grafico_semanal(serie, ano, faixa, anos_da_faixa, tema=filtros.tema()), **GRAFICO
     )
 
     st.markdown("**Casos por ano**")
     st.plotly_chart(
-        graficos.grafico_anual(painel.totais_anuais(serie), ano, tema=_tema()), **GRAFICO
+        graficos.grafico_anual(painel.totais_anuais(serie), ano, tema=filtros.tema()), **GRAFICO
     )
 
     if casos_da_uf is not None and municipio is None:
@@ -165,7 +147,7 @@ def painel_febre_amarela(uf, municipio, local, nome_local, coluna_periodo) -> No
         st.info("Os dados de febre amarela ainda não foram publicados.")
         return
     periodos = painel.periodos_de_monitoramento(info["periodos"][0], info["periodos"][-1])
-    periodo = _escolher(coluna_periodo, "Período", periodos[::-1], "periodo_preferido")
+    periodo = filtros.escolher(coluna_periodo, "Período", periodos[::-1], "periodo_preferido")
     dados = painel.febre_amarela_do_local(tabela, local)
     numeros = painel.indicadores_febre_amarela(dados, periodo)
 
@@ -195,14 +177,14 @@ def painel_febre_amarela(uf, municipio, local, nome_local, coluna_periodo) -> No
     st.caption(f"Em verde, {periodo}. Cada período vai de julho a junho do ano seguinte.")
     st.plotly_chart(
         graficos.grafico_periodos(
-            painel.febre_amarela_por_periodo(dados, periodos), periodo, tema=_tema()
+            painel.febre_amarela_por_periodo(dados, periodos), periodo, tema=filtros.tema()
         ),
         **GRAFICO,
     )
 
     por_mes = painel.febre_amarela_por_mes(dados, periodo)
     st.markdown(f"**Casos por mês de início dos sintomas, {periodo}**")
-    st.plotly_chart(graficos.grafico_meses(por_mes, tema=_tema()), **GRAFICO)
+    st.plotly_chart(graficos.grafico_meses(por_mes, tema=filtros.tema()), **GRAFICO)
 
     if municipio is None:
         lista = painel.municipios_febre_amarela(dados, periodo, data.municipios())
@@ -243,26 +225,7 @@ st.caption("Dengue, chikungunya, zika e febre amarela nos dados abertos do Minis
 
 coluna_doenca, coluna_uf, coluna_municipio, coluna_ano = st.columns([1, 1.3, 1.7, 0.8])
 doenca = coluna_doenca.selectbox("Doença", list(DOENCAS), format_func=DOENCAS.get)
-uf = coluna_uf.selectbox(
-    "Local",
-    [BRASIL, *sorted(UFS, key=lambda c: UFS[c][1])],
-    format_func=lambda c: "Brasil" if c == BRASIL else UFS[c][1],
-)
-if uf == BRASIL:
-    coluna_municipio.selectbox(
-        "Município", ["todos"], format_func=lambda _: "Escolha uma UF primeiro", disabled=True
-    )
-    municipio, nome_local = None, "Brasil"
-else:
-    municipios = data.municipios()
-    da_uf = municipios[municipios["uf_codigo"] == uf].sort_values("nome")
-    nomes = dict(zip(da_uf["codigo_ibge6"], da_uf["nome"], strict=True))
-    municipio = coluna_municipio.selectbox(
-        "Município",
-        [None, *nomes],
-        format_func=lambda c: "Todos os municípios da UF" if c is None else nomes[c],
-    )
-    nome_local = f"{nomes[municipio]} ({UFS[uf][0]})" if municipio else UFS[uf][1]
+uf, municipio, nome_local = filtros.escolher_local(coluna_uf, coluna_municipio)
 
 if doenca == FEBRE_AMARELA:
     painel_febre_amarela(uf, municipio, municipio or uf, nome_local, coluna_ano)

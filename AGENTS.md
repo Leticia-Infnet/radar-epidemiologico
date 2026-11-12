@@ -382,6 +382,58 @@ confiança visível. Não apresentar como previsão oficial.
 
 O modelo é treinado no CI e apenas carregado pela aplicação. **Nunca treinar em request.**
 
+**Implementado** (branch `feature/previsao`, 2026-11-11), em `ml/` (treino no CI),
+`app/tendencia.py` (cálculos, sem Streamlit), `app/graficos.py` e `app/pages/2_previsao.py`:
+
+- Recorte (decisões da usuária em 2026-11-11): **dengue e chikungunya**; Brasil, 27 UFs e
+  os municípios com média de 5 ou mais casos prováveis por semana nas últimas 260 semanas
+  completas (`ml/dados.py`: 1.232 na dengue, com 88% dos casos, e 92 na chikungunya).
+  Zika (mediana de 1 caso por semana por UF) e febre amarela (mensal) ficam fora.
+- Horizonte: da última semana completa em diante, as 4 semanas incompletas mais 4 à
+  frente do corte (8 passos). As semanas incompletas não entram como alvo nem atributo.
+- **Modelo global, estratégia direta**: um ajuste por doença, grupo (Brasil e UFs; ou
+  municípios) e passo, com as séries do grupo juntas, na escala `log1p`. Atributos
+  (`ml/features.montar_atributos`), todos conhecidos na origem: as 4 últimas semanas,
+  médias de 4, 8 e 52 semanas, a semana-alvo um e dois anos antes, o crescimento do ano
+  anterior entre a origem e o alvo, a mediana da semana-alvo em até 10 anos anteriores e
+  Fourier da semana-alvo. A sazonalidade regional entra pelos atributos da própria série.
+- Candidatos (`ml/modelos.py`): baseline sazonal ingênuo, **persistência** (repetir a
+  última semana, o baseline difícil nos passos curtos), `Ridge` ponderado pelo volume e
+  GLM binomial negativa. Escolha por grupo pelo menor MASE mediano; o GLM só entra se
+  melhorar mais de 2%. O `Ridge` venceu nos quatro grupos.
+- Backtest de origem móvel (`ml/evaluate.backtest_origem_movel`): reajuste a cada ano de
+  teste, janela expansível, treino só com alvos já conhecidos na primeira origem do ano
+  (dengue de 2015 em diante, chikungunya de 2019). MASE com a escala do baseline sazonal
+  na série completa de cada local.
+- Resultado em 2026-11-11 (MASE mediano dos 8 passos: Ridge / persistência / sazonal):
+  dengue, Brasil e UFs 0,34 / 0,48 / 1,10; dengue, municípios 0,49 / 0,63 / 1,24;
+  chikungunya, Brasil e UFs 0,36 / 0,48 / 1,00; chikungunya, municípios 0,52 / 0,64 /
+  1,49. Por passo, na dengue do Brasil: de 0,11 (passo 1) a 0,46 (passo 8).
+- Intervalos de 50% e 90% (`ml/evaluate.Intervalos`): quantis empíricos dos resíduos
+  fora da amostra do backtest, em `log1p`, por passo e por faixa de volume da série. A
+  cobertura do intervalo de 90%, medida só com os resíduos dos anos de teste anteriores,
+  ficou entre 0,89 e 0,91 (0,96 no Brasil, que divide a faixa com as UFs maiores).
+- Publicação em `previsao/` (`python -m ml.train`): `estimativas.parquet` (contrato
+  `EstimativaSemanal`), `metricas.parquet` (`MetricaBacktest`, erro de cada candidato por
+  local e passo), `modelos/<doenca>.joblib` e `metadados.json`. **A aplicação lê as
+  estimativas prontas**, não o modelo: nada de atributos em request nem de risco de versão
+  divergente do scikit-learn. O `joblib` fica no Hub para rastreabilidade.
+- Portão de qualidade (`train.conferir_qualidade`): não publica se o modelo escolhido não
+  superar os dois baselines em algum grupo, se faltarem séries ou passos, ou se houver
+  estimativa vazia ou negativa.
+- Workflow `train`: dispara ao fim de cada `etl` concluído com sucesso e manualmente (com
+  `sem_publicar`). Cerca de 7 minutos e pico de 6,4 GB de memória na carga local.
+- Página "Tendência": filtros de doença, local e município; indicadores (nível atual,
+  estimativa da última semana com a variação, intervalo de 90% e tendência); gráfico com
+  as 26 últimas semanas completas, a estimativa tracejada, as faixas de 50% e 90% e o
+  dado parcial das semanas incompletas; tabelas das estimativas e do erro no backtest do
+  local. A tendência só é "alta" ou "queda" quando o intervalo de 50% inteiro fica acima
+  ou abaixo da média das 4 últimas semanas completas. Município fora do recorte mostra a
+  estimativa da UF, com aviso.
+- Limitação: o backtest usa o dado consolidado de hoje. Na operação real a origem são
+  semanas que ainda serão revisadas (ver a armadilha dos descartes na seção 8), então o
+  erro real deve ser um pouco maior que o medido.
+
 ### 7.3 Mapa de UBS mais próximas
 
 Fluxo: usuário informa o CEP → geocodificação → busca das k unidades mais próximas →
@@ -488,6 +540,12 @@ metadados.
 | `/macrorregiao-e-regiao-de-saude/municipio` devolve no máximo 860 registros por página, mesmo com `limit=1000`, e o cliente tomava a página curta pela última | `DemasClient.todos(..., tamanho_pagina=500)`; o piso de linhas pegou o erro |
 | A DEMAS mudou o sentido do `offset` de registro para página entre 2026-11-05 e 2026-11-11, sem aviso: o cliente pedia a página 1000, recebia lista vazia e parava na primeira página (o piso de linhas barrou a febre amarela com 994 casos) | `DemasClient.todos` pede `offset=1` depois da primeira página cheia e vê se ela repete a primeira deslocada de um registro; funciona nos dois sentidos. Com `limit=1` (`contar`) eles coincidem |
 | GitHub Actions recusou os jobs com "account is locked due to a billing issue" numa conta Free sem nada a pagar (2026-11-09): o GitHub exige um meio de pagamento cadastrado | Meio de pagamento cadastrado em 2026-11-11; os orçamentos de $0 com uso bloqueado (Actions, Git LFS, Packages, Codespaces e IA) impedem cobrança. O Actions de repositório público não entra nesses orçamentos |
+| Um modelo único para Brasil, UFs e municípios fica dominado pelas séries municipais, ruidosas: no Brasil perdia da persistência até o passo 4 (MASE 0,59 contra 0,56) | Um modelo por grupo (`train.GRUPO_DO_NIVEL`): Brasil e UFs; municípios. No Brasil, passo 4, o MASE caiu para 0,27 |
+| Regressão em `log1p` sem peso é dominada pelas semanas de poucos casos e perde da persistência no passo 1 | Peso pelo volume recente em `modelos.RidgeLog` (inverso da variância aproximada do log de uma contagem) |
+| MASE com a escala só do período de treino explode nos municípios em que a doença chegou depois (chikungunya: mediana de 8,9 para o próprio baseline) | Escala do baseline sazonal na série completa (`evaluate.escalas_sazonais`) |
+| O GLM do `statsmodels` com 1 milhão de linhas guarda várias cópias da matriz (4,5 GB num ajuste; 14 GB no backtest inteiro) | `modelos.BinomialNegativa` ajusta numa amostra de 250 mil linhas |
+| As semanas recentes da dengue **caem** depois de "completas": entre os cortes de 2026-10-27 e 2026-11-10, as semanas 36 a 40 perderam de 6% a 12% dos casos prováveis (suspeitos descartados depois). O dado parcial de uma semana incompleta não é um piso | Não forçar a estimativa para cima do dado parcial; a página explica que ele muda nos dois sentidos. As versões antigas ficam no histórico Git do dataset no Hub |
+| `workflow_run` só dispara pelo arquivo de workflow que está na branch padrão | O `train` automático passa a valer depois do merge; antes disso, disparo manual |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
 
 ---
@@ -499,7 +557,7 @@ metadados.
 ├── .github/workflows/
 │   ├── ci.yml               # push/PR: Ruff, pytest e sincronia do requirements.txt
 │   ├── etl.yml              # cron: extração, agregação, publicação no Hub
-│   ├── train.yml            # cron: retreino do modelo
+│   ├── train.yml            # depois de cada etl: retreino e publicação das estimativas
 │   └── index.yml            # manual: reindexação do RAG
 ├── notebooks/
 │   └── 01_analise_exploratoria.ipynb  # etapa 0: análise qualitativa e quantitativa
@@ -512,9 +570,11 @@ metadados.
 │   ├── publish/             # upload para o HF Hub
 │   └── pipeline.py          # ponto de entrada: python -m etl.pipeline <etapas>
 ├── ml/
-│   ├── features.py          # Fourier, lags, médias móveis
-│   ├── train.py
-│   └── evaluate.py          # backtest de origem móvel, MAE/MASE
+│   ├── dados.py             # séries do Hub em memória; municípios elegíveis
+│   ├── features.py          # Fourier, lags, médias móveis; atributos por origem e passo
+│   ├── modelos.py           # candidatos: baselines, Ridge ponderado, GLM binomial negativa
+│   ├── evaluate.py          # backtest de origem móvel, MAE/MASE, intervalos
+│   └── train.py             # ponto de entrada: python -m ml.train [--sem-publicar]
 ├── rag/
 │   ├── fontes.yaml          # URLs dos manuais (não os PDFs)
 │   ├── ingest.py            # download e parsing dos manuais
@@ -534,6 +594,8 @@ metadados.
 │   ├── geo.py               # CEP, BallTree, Folium
 │   ├── estilo.py            # tamanho de fonte das páginas (CSS)
 │   ├── painel.py            # cálculos do dashboard (indicadores, faixa histórica, ranking)
+│   ├── tendencia.py         # cálculos da página de tendência (direção, série recente)
+│   ├── filtros.py           # seletores de local e tema, comuns ao dashboard e à tendência
 │   └── graficos.py          # gráficos Plotly do dashboard, com as paletas do tema
 ├── .streamlit/config.toml   # tema verde e marrom (claro e escuro)
 ├── tests/
@@ -565,7 +627,7 @@ metadados.
 
 ## 11. Ordem de implementação sugerida
 
-Situação em 2026-11-04 entre colchetes.
+Situação em 2026-11-11 entre colchetes.
 
 
 0. [Feito; decisões tomadas em 2026-11-04, seção 7.1] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
@@ -578,7 +640,7 @@ Situação em 2026-11-04 entre colchetes.
 3. [Feito, PR #1] Feature 3, o mapa — é a que entrega valor mais rápido e exercita menos partes móveis.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
 5. [Feito, PR #5] Feature 1, o dashboard, com febre amarela e o tema visual.
-6. [Pendente] Feature 2, previsão, começando pelo baseline sazonal.
+6. [Feito, branch `feature/previsao`] Feature 2, a estimativa de tendência (seção 7.2).
 7. [Pendente] Feature 4, o chatbot RAG.
 
 ---
@@ -594,8 +656,13 @@ Situação em 2026-11-04 entre colchetes.
   O FTP do DATASUS aceita conexões do GitHub Actions (verificado em 2026-11-04: etapa
   completa em cerca de 11 minutos no runner). Especialistas (dermatologia, psiquiatria)
   quase não aparecem em UBS.
-- A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
-  (julho), não entre fevereiro e maio (seção 7.2). Modelar a sazonalidade por região ou município.
+- ~~A sazonalidade varia por região: em Olinda (PE) o pico mediano da dengue foi na semana 29
+  (julho), não entre fevereiro e maio. Modelar a sazonalidade por região ou município.~~
+  O modelo de tendência usa a sazonalidade da própria série (seção 7.2).
+- Estimativa de tendência: medir o erro em tempo real. O ETL sobrescreve as séries toda
+  semana, mas o histórico Git do dataset guarda cada versão; com alguns meses de versões dá
+  para comparar as estimativas publicadas com o dado consolidado e modelar a revisão das
+  semanas recentes (atraso de notificação e descartes).
 - ~~Investigar a ausência de notificações de zika de Olinda em 2015 e 2016 na DEMAS.~~ A
   lacuna está no próprio SINAN: o arquivo nacional do FTP também traz só 1 e 9 casos
   prováveis em Olinda nesses anos. A zika só passou a ser de notificação compulsória em
@@ -606,14 +673,14 @@ Situação em 2026-11-04 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-11-05.
+Atualizado em 2026-11-11.
 
 ### Onde as coisas estão
 
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.061.215 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-10-27) e `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-11), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
 | Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF` |
 | Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
@@ -642,25 +709,25 @@ Atualizado em 2026-11-05.
   `profissionais`, `populacao`, `arboviroses` (FTP do DATASUS) e `febre_amarela` (DEMAS),
   com piso de linhas e `--sem-publicar`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
-- `app/`: página inicial, dashboard (dengue, chikungunya, zika e febre amarela) e mapa de
-  UBS completos, com o tema verde e marrom; previsão e chatbot são esqueletos "em
-  construção".
-- `ml/`: atributos (Fourier, lags, médias móveis), baseline sazonal, MAE e MASE; treino pendente.
+- `app/`: página inicial, dashboard (dengue, chikungunya, zika e febre amarela), tendência
+  (dengue e chikungunya) e mapa de UBS completos, com o tema verde e marrom; o chatbot é
+  um esqueleto "em construção".
+- `ml/`: estimativa de tendência de dengue e chikungunya (seção 7.2): leitura das séries,
+  atributos, candidatos, backtest de origem móvel, intervalos, portão de qualidade e
+  publicação em `previsao/`.
 - `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
   o resto são esqueletos. `rag/fontes.yaml` está vazio.
 - Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
 - Workflows: `ci` (push e PR), `etl` (manual e cron semanal, segundas às 03h de
-  Brasília: `ubs profissionais populacao arboviroses febre_amarela`), `train` e `index`
-  (esqueletos).
+  Brasília: `ubs profissionais populacao arboviroses febre_amarela`), `train` (manual e ao
+  fim de cada `etl` com sucesso) e `index` (esqueleto).
 
 ### Próximos passos combinados
 
-1. Feature 2, previsão (seção 7.2, etapa 6), começando pelo baseline sazonal sobre as
-   séries semanais de `arboviroses/`. Lembrar: sazonalidade regional, sobredispersão
-   (binomial negativa), semanas incompletas fora do treino, `TimeSeriesSplit`.
-2. Feature 4, o chatbot RAG (seção 7.4); falta a lista de manuais em `rag/fontes.yaml`.
-3. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
+1. Feature 4, o chatbot RAG (seção 7.4); falta a lista de manuais em `rag/fontes.yaml`.
+2. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
    população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
-4. Atualizar o diagrama de arquitetura em `docs/` (ainda mostra o HF Spaces; agora há o
+   Da tendência: erro em tempo real com as versões guardadas no Hub (seção 12).
+3. Atualizar o diagrama de arquitetura em `docs/` (ainda mostra o HF Spaces; agora há o
    FTP do DATASUS como fonte).
 

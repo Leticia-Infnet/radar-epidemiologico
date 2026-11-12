@@ -26,7 +26,7 @@ def inicio() -> None:
     st.markdown(
         """
 - **Dashboard**: histórico de notificações por doença, ano e município.
-- **Previsão**: estimativa de tendência de notificações.
+- **Tendência**: estimativa estatística dos casos de dengue e chikungunya nas próximas semanas.
 - **Mapa**: unidades básicas de saúde mais próximas do seu CEP.
 - **Chatbot**: orientação baseada nos manuais oficiais do Ministério da Saúde.
 """
@@ -39,7 +39,7 @@ navegacao = st.navigation(
     [
         st.Page(inicio, title="Início", default=True),
         st.Page(PAGINAS / "1_dashboard.py", title="Dashboard", icon="📊"),
-        st.Page(PAGINAS / "2_previsao.py", title="Previsão"),
+        st.Page(PAGINAS / "2_previsao.py", title="Tendência", icon="📈"),
         st.Page(PAGINAS / "3_mapa.py", title="Mapa de UBS", icon="🗺️"),
         st.Page(PAGINAS / "4_chatbot.py", title="Chatbot"),
     ]

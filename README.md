@@ -26,7 +26,7 @@ no Hub; a aplicação lê do Hub no startup.
 | `notebooks/` | Etapa 0: análise exploratória qualitativa e quantitativa |
 | `common/` | Configuração compartilhada (`pydantic-settings`) |
 | `etl/` | Extração (DEMAS, IBGE, FTP do DATASUS), normalização, validação Pandera e publicação no Hub |
-| `ml/` | Atributos, treino e backtest do modelo de tendência |
+| `ml/` | Séries, atributos, modelos candidatos, backtest e treino da estimativa de tendência |
 | `rag/` | Ingestão dos manuais, chunking, indexação, busca e filtro de sinais de alarme |
 | `app/` | Aplicação Streamlit, suas páginas e o `requirements.txt` do deploy |
 | `.github/workflows/` | CI, ETL, treino e indexação |
@@ -86,6 +86,24 @@ arquivos preliminares do ano corrente mudam ao longo do ano.
 Um piso de linhas por tabela impede que uma extração vazia ou parcial substitua os dados
 publicados.
 
+## Estimativa de tendência
+
+```bash
+uv run python -m ml.train --sem-publicar   # treina, avalia e valida, sem enviar ao Hub
+```
+
+O treino lê as séries semanais de dengue e chikungunya publicadas pelo ETL (Brasil, UFs e
+municípios com média de 5 ou mais casos por semana nos últimos 5 anos), compara os
+candidatos num backtest de origem móvel (baseline sazonal, persistência, Ridge com
+atributos sazonais e GLM binomial negativa) e publica em `previsao/` as estimativas das
+4 semanas incompletas e das 4 seguintes, com intervalos de 50% e 90%, as métricas do
+backtest e o modelo. Nada é publicado se o modelo escolhido não superar os baselines.
+
+O workflow `train` roda ao fim de cada `etl` concluído com sucesso e também manualmente
+(*Actions → train → Run workflow*). A aplicação só lê as estimativas prontas: o modelo
+nunca é treinado nem executado em request. O resultado é uma estimativa estatística de
+tendência, não uma previsão oficial.
+
 ## Deploy
 
 A aplicação roda no [Streamlit Community Cloud](https://share.streamlit.io), ligada a
@@ -106,5 +124,5 @@ este repositório: cada push na `main` atualiza o app. Configuração do app:
 3. Mapa de UBS.
 4. ETL de arboviroses e dicionário de municípios do IBGE.
 5. Dashboard histórico.
-6. Previsão, a partir do baseline sazonal.
+6. Estimativa de tendência, a partir do baseline sazonal.
 7. Chatbot RAG.

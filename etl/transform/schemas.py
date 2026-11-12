@@ -3,6 +3,7 @@
 from datetime import date
 
 import pandera.polars as pa
+import polars as pl
 
 from etl.extract.datasus import AGRAVOS_SINAN as DOENCAS
 from etl.transform.aggregate import BRASIL, UF_CODIGOS
@@ -104,3 +105,62 @@ class Populacao(pa.DataFrameModel):
     codigo_ibge6: str = pa.Field(unique=True, str_matches=r"^\d{6}$")
     populacao: int = pa.Field(gt=0)
     ano_referencia: int = pa.Field(ge=2000)
+
+
+class EstimativaSemanal(pa.DataFrameModel):
+    """Estimativa de tendência dos casos prováveis por doença, local e semana-alvo, com os
+    limites dos intervalos de 50% (`p25` a `p75`) e 90% (`p05` a `p95`).
+
+    `local` é `BR`, o código da UF ou o código IBGE de 6 dígitos do município. `passo`
+    conta as semanas desde a última completa; `incompleta` marca as semanas que já têm
+    dado parcial publicado.
+    """
+
+    doenca: str = pa.Field(isin=["dengue", "chikungunya"])
+    nivel: str = pa.Field(isin=["br", "uf", "municipio"])
+    local: str = pa.Field(str_matches=r"^(BR|\d{2}|\d{6})$")
+    ano_epi: int = pa.Field(ge=2000)
+    semana_epi: int = pa.Field(ge=1, le=53)
+    inicio_semana: date
+    passo: int = pa.Field(ge=1, le=26)
+    incompleta: bool
+    estimativa: float = pa.Field(ge=0)
+    p05: float = pa.Field(ge=0)
+    p25: float = pa.Field(ge=0)
+    p75: float = pa.Field(ge=0)
+    p95: float = pa.Field(ge=0)
+
+    class Config:
+        unique = ["doenca", "local", "passo"]
+
+    @pa.dataframe_check
+    def intervalos_ordenados(cls, dados) -> pl.LazyFrame:
+        """p05 ≤ p25 ≤ estimativa ≤ p75 ≤ p95."""
+        return dados.lazyframe.select(
+            (pl.col("p05") <= pl.col("p25"))
+            & (pl.col("p25") <= pl.col("estimativa"))
+            & (pl.col("estimativa") <= pl.col("p75"))
+            & (pl.col("p75") <= pl.col("p95"))
+        )
+
+
+class MetricaBacktest(pa.DataFrameModel):
+    """Erro de cada modelo candidato no backtest de origem móvel, por local e passo.
+
+    MASE abaixo de 1 indica erro menor que o do baseline sazonal naquele local. A
+    cobertura é a fração das semanas em que o real caiu no intervalo de 90%; os
+    baselines não têm intervalo.
+    """
+
+    doenca: str = pa.Field(isin=["dengue", "chikungunya"])
+    nivel: str = pa.Field(isin=["br", "uf", "municipio"])
+    local: str = pa.Field(str_matches=r"^(BR|\d{2}|\d{6})$")
+    passo: int = pa.Field(ge=1, le=26)
+    modelo: str
+    mae: float = pa.Field(ge=0)
+    mase: float = pa.Field(ge=0, nullable=True)
+    cobertura_90: float = pa.Field(ge=0, le=1, nullable=True)
+    n: int = pa.Field(ge=1)
+
+    class Config:
+        unique = ["doenca", "local", "passo", "modelo"]

@@ -2,9 +2,16 @@ name: train
 
 on:
   workflow_dispatch:
-  # Habilitar quando o treino estiver implementado; rodar depois do ETL semanal.
-  # schedule:
-  #   - cron: "0 12 * * 1"
+    inputs:
+      sem_publicar:
+        description: "Só treinar e validar, sem publicar no Hub"
+        type: boolean
+        default: false
+  # Depois de cada ETL concluído: se as séries mudaram, as estimativas mudam junto. O
+  # gatilho só vale para o arquivo que está na branch padrão.
+  workflow_run:
+    workflows: [etl]
+    types: [completed]
 
 # O `uv sync` de cada job instala só os grupos necessários; sem isto, o `uv run`
 # sincronizaria de novo os grupos padrão (Jupyter, matplotlib) a cada execução.
@@ -13,13 +20,16 @@ env:
 
 jobs:
   treino:
+    # Um ETL que falhou não publicou nada novo.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       RADAR_HF_TOKEN: ${{ secrets.RADAR_HF_TOKEN }}
       RADAR_HF_DATASET_REPO: ${{ vars.RADAR_HF_DATASET_REPO }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      # O grupo `etl` traz os contratos (Pandera e Polars) e a publicação no Hub.
       - run: uv sync --locked --group ml --group etl --no-default-groups
-      - run: uv run python -m ml.train
+      - run: uv run python -m ml.train ${{ inputs.sem_publicar && '--sem-publicar' || '' }}
