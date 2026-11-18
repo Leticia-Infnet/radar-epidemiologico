@@ -687,6 +687,7 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 | O Ragas 0.4.3 não importa com o `langchain-community` 0.4 (`chat_models.vertexai` saiu) | `ragas>=0.4.4` |
 | O gpt-oss às vezes cita no formato nativo dele (`【4】`, `【4†fonte】`), e o validador só aceitava `[n]`: 6 de 20 respostas corretas viraram "não encontrei" (`sem_citacao`) na avaliação de 2026-11-18 | `resposta.normalizar_citacoes` converte para `[n]` antes de validar, e o prompt pede colchetes retos |
 | Na avaliação com Ragas, o juiz gpt-oss-20b na configuração padrão gasta os tokens com raciocínio e o Groq responde "Failed to generate JSON" (13 de 14 respostas) | `llm_factory` com `instructor.Mode.JSON`, `max_tokens=4096` e `reasoning_effort="low"`; o workflow falha se o juiz pontuar menos da metade das respostas |
+| Na segunda avaliação (2026-11-18), 8 de 20 perguntas ficaram sem nota por 429 do limite por minuto do juiz, e "corticoide na chikungunya" tirou zero: a resposta vinha do título da seção (um aviso em destaque que o Docling leu como título), que o juiz não recebia | `avaliacao_respostas.pontuar` espera 60 s e tenta de novo no limite por minuto (não no diário); o juiz recebe os trechos com manual e seção, como o chatbot (`resposta.formatar_trecho`) |
 | `st.page_link` quebra nas páginas abertas sozinhas pelo `AppTest` (sem `st.navigation`) | Citar a página pelo nome no texto |
 
 ---

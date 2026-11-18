@@ -27,7 +27,7 @@ from typing import Any
 
 from common.config import get_settings
 from rag.index import carregar_avaliacao
-from rag.resposta import ClienteLLM, responder
+from rag.resposta import ClienteLLM, formatar_trecho, responder
 from rag.retrieve import Buscador, carregar_buscador
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,37 @@ OPCOES_DO_JUIZ = {"max_tokens": 4096, "reasoning_effort": "low"}
 MINIMO_AVALIADAS = 0.5  # fração das respostas que o juiz precisa pontuar
 PERGUNTAS_PADRAO = 20
 ESPERA_S = 30  # entre perguntas, para caber na cota por minuto
+# O juiz faz várias chamadas longas por pergunta e esbarra no limite de tokens por minuto
+# do Groq (8 de 20 perguntas sem nota em 2026-11-18): esperar e tentar de novo. O limite
+# diário não volta em um minuto, então nele não há nova tentativa.
+TENTATIVAS_429 = 3
+ESPERA_429_S = 60
+
+
+def limite_por_minuto(exc: Exception) -> bool:
+    """O erro é o 429 do limite por minuto (passa sozinho), e não o diário."""
+    texto = str(exc)
+    return ("429" in texto or "Rate limit" in texto) and "per day" not in texto
+
+
+async def pontuar(
+    metrica: Any,
+    tentativas: int = TENTATIVAS_429,
+    espera: float = ESPERA_429_S,
+    **argumentos: Any,
+) -> float | None:
+    """Nota de uma métrica; tenta de novo no limite por minuto e devolve None se falhar."""
+    for tentativa in range(1, tentativas + 1):
+        try:
+            return (await metrica.ascore(**argumentos)).value
+        except Exception as exc:  # o juiz também tem cota; uma falha não perde as demais
+            if limite_por_minuto(exc) and tentativa < tentativas:
+                log.info("Limite por minuto do juiz; nova tentativa em %.0f s.", espera)
+                await asyncio.sleep(espera)
+                continue
+            log.warning("Juiz falhou em %r: %s", argumentos.get("user_input"), exc)
+            return None
+    return None
 
 
 def _media(valores: list[float | None]) -> float | None:
@@ -69,20 +100,19 @@ async def avaliar(
         }
         if resposta.tipo == "resposta":
             busca = buscador.buscar(pergunta)
-            contextos = [buscador.trecho(r.posicao)["texto"] for r in busca.resultados]
-            try:
-                linha["fidelidade"] = (
-                    await fidelidade.ascore(
-                        user_input=pergunta, response=resposta.texto, retrieved_contexts=contextos
-                    )
-                ).value
-                linha["precisao_contexto"] = (
-                    await precisao.ascore(
-                        user_input=pergunta, response=resposta.texto, retrieved_contexts=contextos
-                    )
-                ).value
-            except Exception as exc:  # o juiz também tem cota; uma falha não perde as demais
-                log.warning("Juiz falhou em %r: %s", pergunta, exc)
+            # Os trechos como o chatbot os recebe, com manual e seção: às vezes a informação
+            # está no título da seção (um aviso em destaque que o Docling leu como título).
+            contextos = [
+                formatar_trecho(n, buscador.trecho(r.posicao))
+                for n, r in enumerate(busca.resultados, start=1)
+            ]
+            argumentos = {
+                "user_input": pergunta,
+                "response": resposta.texto,
+                "retrieved_contexts": contextos,
+            }
+            linha["fidelidade"] = await pontuar(fidelidade, **argumentos)
+            linha["precisao_contexto"] = await pontuar(precisao, **argumentos)
         log.info("%s", json.dumps(linha, ensure_ascii=False))
         linhas.append(linha)
     return {

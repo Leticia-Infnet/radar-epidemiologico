@@ -199,14 +199,16 @@ def consulta_de_busca(pergunta: str, historico: list[dict[str, str]]) -> str:
     return pergunta
 
 
+def formatar_trecho(numero: int, trecho: dict[str, Any]) -> str:
+    """Um trecho como o LLM o recebe: número, manual, edição, página, seção e texto."""
+    return (
+        f"[{numero}] {trecho['titulo']} ({trecho['edicao']}), página "
+        f"{trecho['pagina_inicial']} do PDF — seção: {trecho['secao']}\n{trecho['texto']}"
+    )
+
+
 def _bloco_de_trechos(trechos: list[dict[str, Any]]) -> str:
-    partes = []
-    for numero, t in enumerate(trechos, start=1):
-        partes.append(
-            f"[{numero}] {t['titulo']} ({t['edicao']}), página {t['pagina_inicial']} do PDF"
-            f" — seção: {t['secao']}\n{t['texto']}"
-        )
-    return "\n\n".join(partes)
+    return "\n\n".join(formatar_trecho(n, t) for n, t in enumerate(trechos, start=1))
 
 
 def montar_mensagens(
