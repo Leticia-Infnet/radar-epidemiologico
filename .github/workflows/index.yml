@@ -1,5 +1,8 @@
 name: index
 
+# A Biblioteca Virtual em Saúde (bvsms.saude.gov.br) responde HTTP 403 aos downloads do
+# GitHub Actions (verificado em 2026-11-18), então este workflow falha no primeiro manual.
+# A indexação roda localmente: `uv run --group indexacao python -m rag.index` (README).
 on:
   workflow_dispatch:
     inputs:

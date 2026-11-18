@@ -551,7 +551,11 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 
 - Decisões da usuária em 2026-11-17: corpus da seção 4.4; LLM da seção 6; alarme com
   botão para seguir; perguntas sem resposta num dataset privado.
-- Indexação (`python -m rag.index`, workflow manual `index`): baixa os PDFs para um
+- Indexação **local** (`uv run --group indexacao python -m rag.index`, na máquina da
+  usuária, com o `RADAR_HF_TOKEN` de escrita do `.env`; decisão de 2026-11-18): a BVS
+  recusa downloads do GitHub Actions (HTTP 403), então o workflow `index` não serve para
+  publicar. Só é preciso reindexar quando `fontes.yaml`, `sinonimos.yaml`, `avaliacao.yaml`
+  ou o chunking mudam. Baixa os PDFs para um
   diretório temporário, converte com o Docling em blocos (`rag/ingest.py`), tira textos
   repetidos em mais de 30% das páginas, agrupa por seção (títulos seguidos viram
   "Capítulo › Seção"), descarta sumário, ficha catalográfica, referências e expediente e
@@ -644,6 +648,7 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 | O DATASUS publica os arquivos PF de cada UF em dias diferentes | Usar a competência mais recente que já tem as 27 UFs (`datasus.competencia_completa`) |
 | CBO 322255 falta na tabela `CBO_02.dbf` e está na família da enfermagem (3222), mas é usado para agentes comunitários (98% sem conselho em PE) | Nome e grupo complementares em `etl/transform/cbo.py`; códigos ainda sem nome aparecem como "<família> (CBO …)" |
 | API do IBGE recusa conexões do GitHub Actions | Etapa `municipios` roda localmente (seção 4.2) |
+| A BVS (`bvsms.saude.gov.br`) responde HTTP 403 aos downloads do GitHub Actions (verificado em 2026-11-18); da máquina da usuária, o mesmo pedido funciona. gov.br e sisaps não chegaram a ser testados no runner | Indexação do RAG roda localmente (`python -m rag.index`), como a etapa `municipios`. Não contornar o bloqueio imitando um navegador. Alternativa descartada: espelhar os PDFs no Hub para o CI ler de lá |
 | Hugging Face Spaces cobra para apps Gradio/Docker; o SDK `streamlit` foi descontinuado | App no Streamlit Community Cloud (seção 6) |
 | Tiles do CARTO respondem HTTP 200 com marca d'água "API KEY REQUIRED" | Usar tiles do OpenStreetMap; ao testar tiles, olhar a imagem, não só o status |
 | Servidor de demonstração do OSRM ignora o perfil e roteia sempre de carro | Usar o OSRM da FOSSGIS (seção 7.3) |
@@ -692,7 +697,7 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 │   ├── ci.yml               # push/PR: Ruff, pytest e sincronia do requirements.txt
 │   ├── etl.yml              # cron: extração, agregação, publicação no Hub
 │   ├── train.yml            # depois de cada etl: retreino e publicação das estimativas
-│   ├── index.yml            # manual: indexação dos manuais do RAG
+│   ├── index.yml            # manual; a BVS bloqueia o Actions: indexar localmente
 │   └── avaliacao.yml        # manual: avaliação das respostas do chatbot com o Ragas
 ├── notebooks/
 │   └── 01_analise_exploratoria.ipynb  # etapa 0: análise qualitativa e quantitativa
@@ -892,7 +897,7 @@ funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela aju
 - Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
 - Workflows: `ci` (push e PR), `etl` (manual e cron semanal, segundas às 03h de
   Brasília: `ubs profissionais populacao arboviroses febre_amarela`), `train` (manual e ao
-  fim de cada `etl` com sucesso), `index` (manual: indexação dos manuais) e `avaliacao`
+  fim de cada `etl` com sucesso), `index` (manual, mas a BVS recusa o runner: a indexação roda localmente) e `avaliacao`
   (manual: Ragas).
 
 ### Próximos passos combinados
@@ -909,8 +914,8 @@ funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela aju
      *fine-grained* de escrita só nele em `RADAR_HF_CONSULTAS_TOKEN` (Secrets do Streamlit);
    - conferir a memória do app em produção na primeira pergunta (embedder e reranker,
      cerca de 850 MB); se faltar, `RADAR_RERANK_ATIVO=false` desliga o reranker;
-   - rodar o workflow `index` com `sem_publicar` para confirmar que bvsms, gov.br e sisaps
-     respondem ao runner (o índice publicado veio da máquina local).
+   - ~~rodar o workflow `index` no Actions~~: a BVS responde 403 ao runner (2026-11-18);
+     a indexação fica local, como a etapa `municipios`.
 2. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
    população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
    Da tendência: erro em tempo real com as versões guardadas no Hub (seção 12).
