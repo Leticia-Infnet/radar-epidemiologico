@@ -56,7 +56,8 @@ Regras obrigatórias:
    manuais (por exemplo, hidratação, ou evitar ácido acetilsalicílico e anti-inflamatórios
    na suspeita de dengue), dizendo que a conduta deve ser confirmada por um profissional.
 3. Toda informação deve vir dos trechos e ser seguida da citação do trecho no formato [n],
-   com o número do trecho. Não cite trechos que não usou e não invente fontes.
+   com o número do trecho entre colchetes retos, como [1] ou [2, 3]; não use 【】 nem
+   outros símbolos. Não cite trechos que não usou e não invente fontes.
 4. Se os trechos não respondem à pergunta, ou ela não é sobre essas doenças, responda
    exatamente NAO_ENCONTRADO e nada mais.
 5. Escreva em português do Brasil, em linguagem simples, para quem não é da área da
@@ -67,6 +68,20 @@ Regras obrigatórias:
 """
 
 _CITACAO = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+# O gpt-oss às vezes cita no formato nativo dele: 【4】, 【4†fonte】 ou [4†L10-L12]. Sem a
+# conversão, uma resposta correta era descartada como "sem citação" (6 de 20 perguntas na
+# avaliação de 2026-11-18).
+_CITACAO_ALTERNATIVA = re.compile(r"[【\[]\s*(\d+(?:\s*[,;]\s*\d+)*)\s*(?:†[^】\]]*)?[】\]]")
+
+
+def normalizar_citacoes(texto: str) -> str:
+    """Converte as citações em 【n】, 【n†…】 e [n†…] para o formato [n] do chatbot."""
+
+    def converter(marcador: re.Match[str]) -> str:
+        return "[" + re.sub(r"\s*[,;]\s*", ", ", marcador.group(1)) + "]"
+
+    return _CITACAO_ALTERNATIVA.sub(converter, texto)
+
 
 Tipo = Literal["resposta", "nao_encontrado", "alarme", "indisponivel"]
 
@@ -216,6 +231,7 @@ def validar(texto: str, n_trechos: int) -> tuple[str, list[int]] | None:
     resposta ou não citou nenhum trecho existente."""
     if SENTINELA in texto:
         return None
+    texto = normalizar_citacoes(texto)
     citados: set[int] = set()
 
     def filtrar(marcador: re.Match[str]) -> str:

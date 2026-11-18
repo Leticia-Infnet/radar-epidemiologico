@@ -12,6 +12,7 @@ from rag.resposta import (
     LLMIndisponivel,
     consulta_de_busca,
     montar_mensagens,
+    normalizar_citacoes,
     responder,
     validar,
 )
@@ -43,6 +44,25 @@ def test_validar_mantem_citacoes_validas():
 
 def test_validar_aceita_citacoes_coladas():
     assert validar("Hidrate-se [1][3].", 3)[1] == [1, 3]
+
+
+def test_validar_aceita_o_formato_nativo_do_gpt_oss():
+    """Resposta real da avaliação de 2026-11-18, antes descartada como "sem citação"."""
+    texto = (
+        "1. **Fase aguda** – até\u202f14\u202fdias, com febre【4】.  \n"
+        "2. **Fase crônica** – anos【2】."
+    )
+    validado = validar(texto, 4)
+    assert validado is not None
+    assert validado[1] == [2, 4]
+    assert "【" not in validado[0] and "[4]" in validado[0]
+
+
+def test_normalizar_citacoes_variantes():
+    assert normalizar_citacoes("febre【3†fonte】") == "febre[3]"
+    assert normalizar_citacoes("dor [2†L10-L12]") == "dor [2]"
+    assert normalizar_citacoes("sinais【1; 3】") == "sinais[1, 3]"
+    assert normalizar_citacoes("já certo [1, 2]") == "já certo [1, 2]"
 
 
 def test_validar_descarta_sem_citacao_e_sentinela():
