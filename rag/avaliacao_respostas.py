@@ -33,6 +33,11 @@ from rag.retrieve import Buscador, carregar_buscador
 log = logging.getLogger(__name__)
 
 JUIZ = "openai/gpt-oss-20b"
+# Com a configuração padrão do Ragas, o raciocínio do gpt-oss gasta os tokens e o Groq
+# devolve "Failed to generate JSON" (13 de 14 respostas na primeira execução, 2026-11-18).
+# Modo JSON, mais tokens e raciocínio baixo resolveram no mesmo caso.
+OPCOES_DO_JUIZ = {"max_tokens": 4096, "reasoning_effort": "low"}
+MINIMO_AVALIADAS = 0.5  # fração das respostas que o juiz precisa pontuar
 PERGUNTAS_PADRAO = 20
 ESPERA_S = 30  # entre perguntas, para caber na cota por minuto
 
@@ -86,6 +91,7 @@ async def avaliar(
         "juiz": JUIZ,
         "perguntas": len(linhas),
         "respondidas": sum(linha["tipo"] == "resposta" for linha in linhas),
+        "avaliadas": sum(linha["fidelidade"] is not None for linha in linhas),
         "fidelidade_media": _media([linha["fidelidade"] for linha in linhas]),
         "precisao_contexto_media": _media([linha["precisao_contexto"] for linha in linhas]),
         "por_pergunta": linhas,
@@ -102,6 +108,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    import instructor
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
 
@@ -110,12 +117,19 @@ def main() -> None:
     if llm is None:
         raise SystemExit("Defina RADAR_LLM_API_KEY para avaliar as respostas.")
     cliente = AsyncOpenAI(base_url=s.llm_base_url, api_key=s.llm_api_key.get_secret_value())
-    juiz = llm_factory(JUIZ, provider="openai", client=cliente)
+    juiz = llm_factory(
+        JUIZ, provider="openai", client=cliente, mode=instructor.Mode.JSON, **OPCOES_DO_JUIZ
+    )
 
     perguntas = [p["pergunta"] for p in carregar_avaliacao().perguntas][: args.perguntas]
     resultado = asyncio.run(avaliar(perguntas, carregar_buscador(s), llm, juiz, args.espera))
     resumo = {k: v for k, v in resultado.items() if k != "por_pergunta"}
     log.info("Resumo: %s", json.dumps(resumo, ensure_ascii=False))
+    if resultado["avaliadas"] < MINIMO_AVALIADAS * max(resultado["respondidas"], 1):
+        raise SystemExit(
+            f"O juiz só avaliou {resultado['avaliadas']} de {resultado['respondidas']} "
+            "respostas: o resultado não é confiável e não será publicado."
+        )
     if args.sem_publicar:
         return
 

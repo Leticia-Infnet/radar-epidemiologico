@@ -685,6 +685,8 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 | O sumário de um manual tem o nome de todas as seções e ganhava as buscas | `chunk.filtrar_secoes` descarta sumário, linhas de sumário ("Apêndices \| 69"), ficha catalográfica, referências e expediente |
 | O filtro de alarme por padrões dispara também em perguntas informativas ("dengue causa sangramento?") | Alerta com o botão "Não estou com esse sintoma, quero só a informação" (decisão da usuária) |
 | O Ragas 0.4.3 não importa com o `langchain-community` 0.4 (`chat_models.vertexai` saiu) | `ragas>=0.4.4` |
+| O gpt-oss às vezes cita no formato nativo dele (`【4】`, `【4†fonte】`), e o validador só aceitava `[n]`: 6 de 20 respostas corretas viraram "não encontrei" (`sem_citacao`) na avaliação de 2026-11-18 | `resposta.normalizar_citacoes` converte para `[n]` antes de validar, e o prompt pede colchetes retos |
+| Na avaliação com Ragas, o juiz gpt-oss-20b na configuração padrão gasta os tokens com raciocínio e o Groq responde "Failed to generate JSON" (13 de 14 respostas) | `llm_factory` com `instructor.Mode.JSON`, `max_tokens=4096` e `reasoning_effort="low"`; o workflow falha se o juiz pontuar menos da metade das respostas |
 | `st.page_link` quebra nas páginas abertas sozinhas pelo `AppTest` (sem `st.navigation`) | Citar a página pelo nome no texto |
 
 ---
