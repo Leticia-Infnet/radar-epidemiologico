@@ -1,0 +1,191 @@
+# Conjunto de avaliação da busca do chatbot (rag/index.py).
+#
+# `perguntas`: no escopo, na linguagem de quem usa o app. Um trecho é relevante se é de um
+# dos `manuais` e contém todos os `termos` (comparação sem acentos nem maiúsculas, na seção
+# e no texto do trecho). O índice só é publicado se o trecho relevante aparecer entre os 4
+# primeiros em pelo menos 80% das perguntas; o limiar de similaridade é calibrado para
+# deixar passar 90% delas.
+#
+# `fora_do_escopo`: perguntas sem relação com as arboviroses; pelo menos metade delas
+# precisa ficar abaixo do limiar.
+#
+# Para conferir se um termo aparece num manual:
+#   uv run --with pypdf --with pyyaml python -m rag.ingest --procurar <id> "termo"
+
+perguntas:
+  # Dengue
+  - pergunta: "Quais são os sinais de alarme da dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["sinais de alarme", "dor abdominal"]
+  - pergunta: "Posso tomar anti-inflamatório ou AAS se estiver com suspeita de dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["anti-inflamatorio"]
+  - pergunta: "Quanto líquido devo beber em casa se estiver com dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["hidratacao oral"]
+  - pergunta: "Quando devo voltar à unidade de saúde depois de ser atendido com dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["retorno"]
+  - pergunta: "Dengue na gravidez é mais perigosa?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["gestante", "dengue"]
+  - pergunta: "Quais são os sintomas da dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["febre", "mialgia"]
+  - pergunta: "O que é a prova do laço?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["prova do laco"]
+  - pergunta: "Quais são os sinais de choque na dengue grave?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["choque", "pulso"]
+  - pergunta: "Quais remédios para dor e febre podem ser usados na dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["dipirona"]
+  - pergunta: "O que significa estar no grupo B da dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["grupo b"]
+  - pergunta: "Como evitar a picada do mosquito da dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["repelente"]
+  - pergunta: "Quando uma pessoa com dengue precisa ser internada?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["internacao"]
+  - pergunta: "Idoso com dengue precisa de cuidados especiais?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["idoso"]
+
+  # Chikungunya
+  - pergunta: "A dor nas juntas da chikungunya pode durar meses?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["fase cronica"]
+  - pergunta: "Quais são as fases da chikungunya?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["fase aguda"]
+  - pergunta: "Posso usar corticoide para a dor da chikungunya?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["corticoide"]
+  - pergunta: "Como diferenciar dengue de chikungunya?"
+    manuais: [chikungunya-manejo-clinico, dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["diagnostico diferencial"]
+  - pergunta: "Compressa fria ajuda na dor nas articulações da chikungunya?"
+    manuais: [chikungunya-manejo-clinico, guia-pratico-arboviroses-urbanas]
+    termos: ["compressas frias"]
+  - pergunta: "A chikungunya passa da mãe para o bebê na gestação?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["transmissao vertical"]
+  - pergunta: "Exercícios físicos ajudam na recuperação da chikungunya?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["exercicio"]
+
+  # Zika
+  - pergunta: "Zika na gravidez pode causar microcefalia no bebê?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["microcefalia"]
+  - pergunta: "O vírus zika pode ser transmitido por relação sexual?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["sexual"]
+  - pergunta: "Quais são os sintomas da zika?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["zika", "exantema"]
+  - pergunta: "Zika pode causar síndrome de Guillain-Barré?"
+    manuais: [guia-vigilancia-arboviroses, chikungunya-manejo-clinico, dengue-manejo-clinico, guia-pratico-arboviroses-urbanas]
+    termos: ["guillain"]
+  - pergunta: "Qual é o tratamento da zika?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["tratamento de zika"]
+  - pergunta: "Grávida com suspeita de zika precisa fazer ultrassom?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["ultrassonografia"]
+
+  # Febre amarela
+  - pergunta: "Quais são os sintomas da febre amarela?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["ictericia"]
+  - pergunta: "Quem deve tomar a vacina da febre amarela?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["vacina", "febre amarela"]
+  - pergunta: "Qual mosquito transmite a febre amarela no mato?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["haemagogus"]
+  - pergunta: "Como é a forma grave da febre amarela?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["forma grave"]
+  - pergunta: "Febre amarela passa de uma pessoa para outra?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["pessoa a pessoa"]
+  - pergunta: "Quais exames de sangue são pedidos na suspeita de febre amarela?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["transaminases"]
+  - pergunta: "Quanto tempo depois da picada aparecem os sintomas da febre amarela?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["periodo de incubacao"]
+
+  # Guia prático da Atenção Primária
+  - pergunta: "Quem pode tomar a vacina da dengue?"
+    manuais: [guia-pratico-arboviroses-urbanas, guia-vigilancia-arboviroses]
+    termos: ["vacina", "dengue"]
+  - pergunta: "Como deve ser a hidratação de uma grávida com dengue?"
+    manuais: [guia-pratico-arboviroses-urbanas, dengue-manejo-clinico]
+    termos: ["hidratacao", "gestante"]
+  - pergunta: "Febre do Oropouche pode ser confundida com dengue?"
+    manuais: [guia-pratico-arboviroses-urbanas, guia-vigilancia-arboviroses]
+    termos: ["oropouche"]
+  - pergunta: "Quais pessoas têm mais risco de complicações da dengue?"
+    manuais: [guia-pratico-arboviroses-urbanas, dengue-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["fatores de risco"]
+
+  # Perguntas coloquiais (acrescentadas com os sinônimos, 2026-11-17)
+  - pergunta: "Dor atrás dos olhos é sinal de dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["retro-orbit"]
+  - pergunta: "Estou com manchas vermelhas e coceira pelo corpo, o que pode ser?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas, chikungunya-manejo-clinico, dengue-manejo-clinico]
+    termos: ["exantema", "prurido"]
+  - pergunta: "Posso amamentar meu bebê se estiver com dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas, chikungunya-manejo-clinico]
+    termos: ["amamenta"]
+  - pergunta: "Quantos dias dura a febre da dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["dois a sete dias"]
+  - pergunta: "Que exame mostra se é dengue nos primeiros dias?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["ns1"]
+  - pergunta: "Quem já teve febre amarela pode pegar de novo?"
+    manuais: [febre-amarela-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["imunidade"]
+  - pergunta: "Estou com enjoo e dor de cabeça forte, pode ser chikungunya?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["cefaleia", "nauseas"]
+  - pergunta: "Bebê recém-nascido pode pegar chikungunya da mãe?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["recem-nascido"]
+  - pergunta: "Água de coco ajuda na dengue?"
+    manuais: [dengue-manejo-clinico, guia-pratico-arboviroses-urbanas]
+    termos: ["agua de coco"]
+  - pergunta: "Plaqueta baixa é grave na dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["plaquetas"]
+  - pergunta: "Chikungunya pode dar convulsão?"
+    manuais: [chikungunya-manejo-clinico, guia-vigilancia-arboviroses]
+    termos: ["convulsao"]
+  - pergunta: "Dengue pode matar?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["obito", "dengue"]
+  - pergunta: "Meus olhos ficaram vermelhos depois da zika, é normal?"
+    manuais: [guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["conjuntivite"]
+  - pergunta: "Preciso ficar de repouso com dengue?"
+    manuais: [dengue-manejo-clinico, guia-vigilancia-arboviroses, guia-pratico-arboviroses-urbanas]
+    termos: ["repouso"]
+
+fora_do_escopo:
+  - "Qual é a receita de bolo de cenoura?"
+  - "Quem ganhou a Copa do Mundo de 2002?"
+  - "Como declarar o imposto de renda?"
+  - "Como faço um loop for em Python?"
+  - "Qual é a capital da Austrália?"
+  - "Como trocar o pneu do carro?"
+  - "Qual o melhor celular para comprar este ano?"
+  - "Como plantar tomate em vaso?"
+  - "Que horas o banco abre no sábado?"
+  - "Me recomende um filme de comédia."

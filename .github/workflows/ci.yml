@@ -16,12 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked --group dev --group etl --group ml --group app --no-default-groups
+      - run: uv sync --locked --group dev --group etl --group ml --group app --group rag --no-default-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
       - name: app/requirements.txt sincronizado com o uv.lock
         run: |
           uv export --locked --no-hashes --no-dev --no-default-groups \
-            --group app --group ml --no-emit-project -o app/requirements.txt -q
+            --group app --group ml --group rag --no-emit-project -o app/requirements.txt -q
           git diff --exit-code app/requirements.txt

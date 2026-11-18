@@ -1,0 +1,55 @@
+# Vocabulário leigo → termos técnicos dos manuais, acrescentados à pergunta antes da busca
+# (densa e BM25). O reranker e o limiar de similaridade usam a pergunta original.
+#
+# `padrao`: expressão regular sobre a pergunta normalizada (minúsculas, sem acentos).
+# `termos`: palavras dos manuais que a busca passa a considerar.
+#
+# Medido em 2026-11-17: acerto entre os 4 primeiros de 0,92 para 0,95 nas perguntas de
+# avaliação e de 0,71 para 0,86 em 14 perguntas coloquiais de controle. Ao acrescentar
+# termos, rode `python -m rag.index --sem-publicar` e confira se o acerto não caiu. As
+# perguntas sem resposta registradas no dataset privado mostram o vocabulário que falta.
+sinonimos:
+  - padrao: '\bgravid\w*'
+    termos: "gestante gestacao"
+  - padrao: '\bsintoma\w*'
+    termos: "manifestacoes clinicas sinais"
+  - padrao: '\bremedio\w*'
+    termos: "medicamento tratamento medicamentoso"
+  - padrao: '\bjunta\w*'
+    termos: "articulacoes artralgia"
+  - padrao: '\brisco\w*'
+    termos: "fatores de risco"
+  - padrao: '\bmanchas? vermelhas?'
+    termos: "exantema"
+  - padrao: '\bcoceira'
+    termos: "prurido"
+  - padrao: '\bdor de cabeca'
+    termos: "cefaleia"
+  - padrao: '\b(atras|fundo) dos olhos'
+    termos: "dor retro-orbitaria"
+  - padrao: '\bdor (no corpo|muscular|nos musculos)'
+    termos: "mialgia"
+  - padrao: '\benjo\w*'
+    termos: "nauseas"
+  - padrao: '\bolhos? vermelhos?'
+    termos: "conjuntivite hiperemia conjuntival"
+  - padrao: '\bpressao baixa'
+    termos: "hipotensao"
+  - padrao: '\bdesmai\w*'
+    termos: "lipotimia"
+  - padrao: '\bamamenta\w*'
+    termos: "aleitamento materno"
+  - padrao: '\b(bebe|nenem)\b'
+    termos: "lactente recem-nascido"
+  - padrao: '\bexames? de sangue'
+    termos: "hemograma exames laboratoriais"
+  - padrao: '\bultrassom\w*'
+    termos: "ultrassonografia"
+  - padrao: '\bbarriga'
+    termos: "abdominal"
+  - padrao: '\b(morrer|matar|mata)\b'
+    termos: "obito letalidade"
+  - padrao: '\bpegar de novo'
+    termos: "imunidade reinfeccao"
+  - padrao: '\bplaqueta\w* baixa'
+    termos: "plaquetopenia trombocitopenia plaquetas"
