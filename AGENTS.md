@@ -462,8 +462,9 @@ O modelo é treinado no CI e apenas carregado pela aplicação. **Nunca treinar 
 - Workflow `train`: dispara ao fim de cada `etl` concluído com sucesso e manualmente (com
   `sem_publicar`). Cerca de 7 minutos e pico de 6,4 GB de memória na carga local; no
   runner do Actions, 4 min 48 s com `sem_publicar` e os mesmos números (2026-11-12). A
-  primeira `previsao/` do Hub veio de um treino local; a publicação a partir do runner e o
-  disparo automático depois do `etl` ainda não foram vistos funcionando (seção 13).
+  primeira `previsao/` do Hub veio de um treino local. O disparo automático e a publicação
+  pelo runner foram vistos funcionando em 2026-11-16: o `etl` agendado terminou com
+  sucesso e o `train` rodou em seguida por `workflow_run`, publicando `previsao/`.
 - Página "Tendência": filtros de doença, local e município; indicadores (nível atual,
   estimativa da última semana com a variação, intervalo de 90% e tendência); gráfico com
   as 26 últimas semanas completas, a estimativa tracejada, as faixas de 50% e 90% e o
@@ -545,7 +546,7 @@ Requisitos de segurança clínica, obrigatórios:
 Chunking: 500 a 800 tokens, 10 a 15% de sobreposição, cabeçalho da seção preservado nos
 metadados. (Na implementação, até 400 tokens: o e5 trunca em 512.)
 
-**Implementado** (branch `feature/chatbot-rag`, 2026-11-17), em `rag/` (indexação no CI e
+**Implementado** (PR #9, 2026-11-18), em `rag/` (indexação no CI e
 lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 
 - Decisões da usuária em 2026-11-17: corpus da seção 4.4; LLM da seção 6; alarme com
@@ -770,7 +771,7 @@ lógica sem Streamlit) e `app/pages/4_chatbot.py`:
 
 ## 11. Ordem de implementação sugerida
 
-Situação em 2026-11-17 entre colchetes.
+Situação em 2026-11-18 entre colchetes.
 
 
 0. [Feito; decisões tomadas em 2026-11-04, seção 7.1] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
@@ -784,8 +785,7 @@ Situação em 2026-11-17 entre colchetes.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
 5. [Feito, PR #5] Feature 1, o dashboard, com febre amarela e o tema visual.
 6. [Feito, PR #7] Feature 2, a estimativa de tendência (seção 7.2).
-7. [Implementado na branch `feature/chatbot-rag`; índice publicado em 2026-11-18; falta o
-   merge] Feature 4, o chatbot RAG (seção 7.4).
+7. [Feito, PR #9; índice publicado em 2026-11-18] Feature 4, o chatbot RAG (seção 7.4).
 
 ---
 
@@ -819,14 +819,14 @@ Situação em 2026-11-17 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-11-17.
+Atualizado em 2026-11-18.
 
 ### Onde as coisas estão
 
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-11) e `rag/` (índice FAISS e 648 trechos de 5 documentos do MS; publicado em 2026-11-18 a partir da máquina local), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-16, pelo runner) e `rag/` (índice FAISS e 648 trechos de 5 documentos do MS; publicado em 2026-11-18 a partir da máquina local), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
 | Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF`. Em 2026-11-18: 284,50 horas em 11 fases, acima das 280 exigidas pelo projeto de extensão; as últimas são "Chatbot RAG" (49,00) e "Documentação final" (9,50: diagrama e roteiro de apresentação). Como lançar: ver "Planilha de horas" abaixo |
 | Documentos | `docs/`: apresentação inicial, diagrama da proposta (`arquitetura-arboviroses.jpg`, ainda com o HF Spaces) e o diagrama atual (`arquitetura-radar-epidemiologico.svg` e `.png`, de 2026-11-18). O roteiro de apresentação (`docs/roteiro-apresentacao.md`) fica fora do Git (`.git/info/exclude`) |
@@ -897,18 +897,20 @@ funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela aju
 
 ### Próximos passos combinados
 
-0. Conferir o `train` automático: o primeiro disparo por `workflow_run` deve vir depois do
-   `etl` agendado de segunda, 2026-11-16 (aba Actions; `gh run list --workflow train.yml`).
-   Ver se ele publicou `previsao/` pelo runner (`treinado_em` e `corte` novos no
-   `previsao/metadados.json`) e se a página Tendência do app em produção abre com esses
-   dados. Se o `etl` falhar, o `train` não roda e as estimativas ficam com o corte antigo.
-1. Chatbot RAG (seção 7.4), na branch `feature/chatbot-rag`: o índice já está em `rag/`
-   (publicado da máquina local em 2026-11-18). Falta: push, PR e merge; chave do
-   Groq em `RADAR_LLM_API_KEY` (`.env`, Secrets do Streamlit e, para o `avaliacao`, do
-   GitHub); dataset privado `LeticiaF/radar-epidemiologico-consultas` e token
-   *fine-grained* de escrita só nele em `RADAR_HF_CONSULTAS_TOKEN` (Secrets do Streamlit).
-   Conferir no Actions que bvsms e gov.br respondem ao runner. Depois do merge, conferir a
-   memória do app em produção.
+0. ~~Conferir o `train` automático depois do `etl` agendado.~~ Visto em 2026-11-16: o
+   `etl` agendado terminou com sucesso e o `train` rodou por `workflow_run` e publicou
+   `previsao/` pelo runner (`treinado_em` 2026-11-16T15:36Z; corte ainda 2026-11-10,
+   porque o DATASUS não publicou arquivo novo). O cron das 06h UTC só começou às 14h28 UTC:
+   o GitHub atrasa execuções agendadas, então "segunda às 03h" é aproximado.
+1. Chatbot RAG em produção (PR #9, merge em 2026-11-18):
+   - cadastrar `RADAR_LLM_API_KEY` nos Secrets do Streamlit (sem ela, o chatbot só mostra
+     os trechos) e, para o workflow `avaliacao`, nos segredos do GitHub;
+   - opcional: dataset privado `LeticiaF/radar-epidemiologico-consultas` e token
+     *fine-grained* de escrita só nele em `RADAR_HF_CONSULTAS_TOKEN` (Secrets do Streamlit);
+   - conferir a memória do app em produção na primeira pergunta (embedder e reranker,
+     cerca de 850 MB); se faltar, `RADAR_RERANK_ATIVO=false` desliga o reranker;
+   - rodar o workflow `index` com `sem_publicar` para confirmar que bvsms, gov.br e sisaps
+     respondem ao runner (o índice publicado veio da máquina local).
 2. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
    população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
    Da tendência: erro em tempo real com as versões guardadas no Hub (seção 12).
