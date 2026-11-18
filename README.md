@@ -113,6 +113,7 @@ alarme da dengue interrompem a conversa com a orientação de procurar atendimen
 
 ```bash
 uv run --group indexacao python -m rag.index --sem-publicar   # baixa, converte, indexa e avalia
+uv run --group indexacao python -m rag.index                  # e publica em rag/ no Hub
 uv run --with pypdf --with pyyaml python -m rag.ingest --sumario <id>      # páginas do PDF
 uv run --with pypdf --with pyyaml python -m rag.ingest --procurar <id> "termo"
 ```
@@ -123,7 +124,12 @@ nos manuais marcados), divide em trechos por seção e gera os embeddings do
 publicar em `rag/` no Hub, avalia a busca híbrida (BM25 + densa, reordenada por um
 cross-encoder multilíngue em ONNX) com as perguntas de
 `rag/avaliacao.yaml`, calibra o limiar de similaridade e passa por um portão de
-qualidade. Workflow `index` (*Actions → index → Run workflow*).
+qualidade.
+
+A indexação roda **localmente**, com `RADAR_HF_TOKEN` (escrita) no `.env`: a Biblioteca
+Virtual em Saúde recusa downloads vindos do GitHub Actions (HTTP 403), como a API do IBGE.
+Só é preciso reindexar quando mudam os manuais (`rag/fontes.yaml`), os sinônimos
+(`rag/sinonimos.yaml`), as perguntas de avaliação ou o chunking.
 
 As respostas vêm do `openai/gpt-oss-120b` no Groq (cota gratuita; reserva no
 `gpt-oss-20b`), com chave em `RADAR_LLM_API_KEY`. As perguntas sem resposta vão para um
