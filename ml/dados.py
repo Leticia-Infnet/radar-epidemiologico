@@ -89,6 +89,8 @@ def _municipios_elegiveis(doenca: str, uf: str, completas: int) -> pd.DataFrame:
     tabela = pd.read_parquet(
         _url(f"arboviroses/doenca={doenca}/uf={uf}/casos.parquet"),
         columns=["codigo_ibge6", "ano_epi", "semana_epi", "casos_provaveis"],
+        # Sem partições Hive tiradas do caminho: ver `app.data.casos_uf`.
+        partitioning=None,
     )
     painel = para_painel(tabela, "codigo_ibge6")
     return painel[elegiveis(painel.iloc[:completas])]
