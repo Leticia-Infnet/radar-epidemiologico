@@ -93,7 +93,10 @@ def casos_uf(doenca: str, uf: str) -> pd.DataFrame:
         "obitos",
         "semana_incompleta",
     ]
-    tabela = _tipos_compactos(pd.read_parquet(caminho, columns=colunas))
+    # `partitioning=None`: se o pyarrow não confirmar que o caminho é um arquivo (falha
+    # passageira da API do Hub), ele o lê como dataset e toma `doenca=` e `uf=` do caminho
+    # por partições Hive, que colidem com a coluna `doenca` do arquivo (ArrowTypeError).
+    tabela = _tipos_compactos(pd.read_parquet(caminho, columns=colunas, partitioning=None))
     tabela["codigo_ibge6"] = tabela["codigo_ibge6"].astype("category")
     return tabela
 
