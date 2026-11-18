@@ -144,6 +144,22 @@ PDFs oficiais de manejo clínico e vigilância de dengue, chikungunya, zika e fe
 amarela, obtidos de `bvsms.saude.gov.br` e `gov.br/saude`. Baixar e versionar as URLs
 de origem, não os PDFs.
 
+Corpus definido pela usuária em 2026-11-17 (`rag/fontes.yaml`; URLs conferidas no mesmo
+dia):
+
+| id | Documento | Páginas indexadas |
+|---|---|---|
+| `dengue-manejo-clinico` | Dengue: diagnóstico e manejo clínico – adulto e criança, 6ª ed., 2024 | 83 |
+| `chikungunya-manejo-clinico` | Chikungunya: manejo clínico, 1ª ed., 2017 | 67 |
+| `febre-amarela-manejo-clinico` | Manual de manejo clínico da febre amarela, 1ª ed., 2020 (metade das páginas são imagens: OCR) | 56 |
+| `guia-vigilancia-arboviroses` | Guia de Vigilância em Saúde, 6ª ed. revisada, 2024, vol. 2, só o capítulo 7 (arboviroses; cobre a zika) | 272 a 395 do PDF |
+| `guia-pratico-arboviroses-urbanas` | Guia Prático de Arboviroses Urbanas – Atenção Primária à Saúde, 2ª ed., 2026 (acrescentado pela usuária em 2026-11-17) | 16 a 72 do PDF: do capítulo "Arboviroses" ao fim do de zika |
+
+No guia prático, a página impressa é a do PDF menos 1. Ficam de fora a apresentação, a
+organização do trabalho na APS, o cenário epidemiológico, o monitoramento no e-SUS, as
+referências, os apêndices de materiais e dimensionamento e os fluxogramas dos anexos (o
+de dengue é imagem; o de chikungunya vira texto embaralhado).
+
 ---
 
 ## 5. Arquitetura
@@ -177,7 +193,9 @@ Usuário
 (`/cnes/estabelecimentos/{cnes}`) são chamados direto pela aplicação, não pelo ETL. São
 poucas chamadas por interação e cabem com `st.cache_data(ttl=86400)`.
 
-O diagrama visual está em `arquitetura-arboviroses.jpg`.
+O diagrama detalhado, com a stack de cada camada, está em
+`docs/arquitetura-radar-epidemiologico.svg` (e `.png`, para slides). O
+`docs/arquitetura-arboviroses.jpg` é o da proposta inicial e ainda mostra o HF Spaces.
 
 ---
 
@@ -236,25 +254,45 @@ O diagrama visual está em `arquitetura-arboviroses.jpg`.
 - Serialização com `joblib` ou `skops`.
 
 ### RAG
-- Parsing: **Docling** (MIT, lida bem com tabelas) ou `pypdf`.
-  **Evitar PyMuPDF** — é AGPL e conflita com a premissa de licenciamento.
-- Embeddings: `intfloat/multilingual-e5-base` ou `BAAI/bge-m3`. Ambos MIT e fortes em
-  português. O e5 exige prefixos `query: ` e `passage: `.
-- Índice: **FAISS** ou **ChromaDB**, construído no CI e publicado no Hub.
-- Busca híbrida: `rank_bm25` + densa, fundidas por Reciprocal Rank Fusion.
-- Reranking: `BAAI/bge-reranker-v2-m3`. Com o limite de 2,7 GB do Community Cloud,
-  embedder e reranker juntos não cabem com folga: preferir `multilingual-e5-small` e
-  avaliar se o reranker compensa.
-- Avaliação: `Ragas` (fidelidade e precisão de contexto).
+- Parsing: **Docling** (MIT), só no CI (grupo `indexacao`): preserva tabelas e marca
+  títulos e a página de cada item. OCR (RapidOCR, modelo multilíngue padrão, no
+  onnxruntime) só nos manuais com `ocr: true` em `fontes.yaml`. `pypdf` só nos comandos
+  auxiliares. **Evitar PyMuPDF** — é AGPL e conflita com a premissa de licenciamento.
+- Embeddings: **`intfloat/multilingual-e5-small` em ONNX quantizado (int8)**, com
+  `onnxruntime` e `tokenizers`, o mesmo arquivo no CI e no app (`rag/embeddings.py`). O app
+  fica **sem torch**. O e5 exige prefixos `query: ` e `passage: ` e trunca em 512 tokens.
+  O `metadados.json` do índice guarda a revisão do modelo, e o app baixa exatamente ela.
+- Índice: **FAISS** `IndexFlatIP` (cosseno sobre vetores normalizados), construído no CI e
+  publicado no Hub.
+- Busca híbrida: `rank_bm25` + densa, fundidas por Reciprocal Rank Fusion (k=60); 4
+  trechos para o LLM.
+- **Reranker** (`rag/rerank.py`, decisão de 2026-11-17): cross-encoder
+  `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (Apache 2.0) em ONNX int8 reordena os 10
+  primeiros candidatos da fusão, com pares de até 256 tokens. O `bge-reranker-v2-m3`
+  (568M parâmetros) não cabe na RAM junto com o embedder. O limiar continua sobre a
+  similaridade do e5. A revisão e os parâmetros vão para o `metadados.json` do índice, e o
+  app usa exatamente os avaliados no portão; `RADAR_RERANK_ATIVO=false` desliga.
+- **Sinônimos** (`rag/sinonimos.yaml` e `rag/sinonimos.py`, decisão de 2026-11-17):
+  vocabulário leigo → termos dos manuais ("grávida" → "gestante gestacao", "coceira" →
+  "prurido"), acrescentado à pergunta antes das duas buscas. O reranker e o limiar usam a
+  pergunta original. Editável sem mexer no código; depois de editar, rodar
+  `python -m rag.index --sem-publicar` e conferir o acerto.
+- Avaliação: métricas próprias de recuperação no portão de qualidade do `rag.index` (sem
+  LLM) e `Ragas` 0.4.4 (fidelidade e precisão de contexto) no workflow manual `avaliacao`.
 
 ### LLM
-Ponto onde "gratuito + hospedado + 100% open source" não coexistem perfeitamente. Opções
-honestas:
-- **Groq free tier** com Llama 3.3 70B — pesos abertos, serviço proprietário, custo zero,
-  latência excelente. **Escolha recomendada.**
-- `llama-cpp-python` com Qwen2.5-3B quantizado rodando na CPU — totalmente autocontido,
-  mas lento e com cerca de 2 GB de RAM, o que não cabe junto do embedder no Community
-  Cloud. Fallback só se o Groq ficar indisponível.
+Ponto onde "gratuito + hospedado + 100% open source" não coexistem perfeitamente.
+- **Groq free tier com `openai/gpt-oss-120b`, reserva `openai/gpt-oss-20b`** (decisão de
+  2026-11-17): pesos abertos (Apache 2.0), serviço proprietário, custo zero. O Llama 3.3
+  70B, a escolha anterior, foi **desligado no Groq em 2026-08-16**. Cota gratuita por
+  modelo: 30 req/min, 1.000 req/dia, 8 mil tokens/min e 200 mil tokens/dia; com cerca de
+  3,5 mil tokens por pergunta, umas 50 perguntas por dia em cada modelo. `reasoning_effort`
+  baixo para gastar menos tokens de raciocínio.
+- O cliente (`rag/resposta.ClienteLLM`, em `httpx`, sem o SDK do Groq) fala a API
+  compatível com a da OpenAI: base, chave e modelos vêm de `RADAR_LLM_*`, então trocar de
+  provedor é só configuração.
+- `llama-cpp-python` com modelo pequeno na CPU, totalmente autocontido, não cabe junto do
+  embedder no Community Cloud. Fallback só se o Groq ficar indisponível.
 
 ### Transversal
 - `uv` para dependências, `Ruff` para lint e formatação, `pytest` para testes.
@@ -505,7 +543,85 @@ Requisitos de segurança clínica, obrigatórios:
 - Registrar consultas sem resposta para melhorar o corpus.
 
 Chunking: 500 a 800 tokens, 10 a 15% de sobreposição, cabeçalho da seção preservado nos
-metadados.
+metadados. (Na implementação, até 400 tokens: o e5 trunca em 512.)
+
+**Implementado** (branch `feature/chatbot-rag`, 2026-11-17), em `rag/` (indexação no CI e
+lógica sem Streamlit) e `app/pages/4_chatbot.py`:
+
+- Decisões da usuária em 2026-11-17: corpus da seção 4.4; LLM da seção 6; alarme com
+  botão para seguir; perguntas sem resposta num dataset privado.
+- Indexação (`python -m rag.index`, workflow manual `index`): baixa os PDFs para um
+  diretório temporário, converte com o Docling em blocos (`rag/ingest.py`), tira textos
+  repetidos em mais de 30% das páginas, agrupa por seção (títulos seguidos viram
+  "Capítulo › Seção"), descarta sumário, ficha catalográfica, referências e expediente e
+  divide em trechos de até 400 tokens do tokenizer do e5, com 60 de sobreposição, sem
+  cruzar seções; tabelas são cortadas por linhas, com o cabeçalho repetido (`rag/chunk.py`).
+  O texto indexado (embedding e BM25) leva o título do manual e a seção.
+- Glifos de uso privado: U+F700 a U+F7FF são texto de fontes "expert" (decodificados); os
+  demais são setas e marcadores (viram espaço).
+- Avaliação e portão (`rag/avaliacao.yaml`, 51 perguntas no escopo e 10 fora): um trecho é
+  relevante se é de um dos manuais esperados e contém os termos da pergunta. Não publica
+  se o acerto entre os 4 primeiros ficar abaixo de 0,80, se menos de metade das perguntas
+  fora do escopo ficar abaixo do limiar ou se algum manual tiver menos de 15 trechos.
+- Limiar: ponto médio entre a maior similaridade fora do escopo e o quantil de 5% das do
+  escopo, publicado no `metadados.json`. Perguntas coloquiais do escopo ficam entre 0,87
+  e 0,89; perguntas de saúde fora do tema (covid, diabetes) passam do limiar e dependem do
+  LLM; cumprimentos ficam abaixo.
+- Resultado local em 2026-11-17 com os quatro primeiros documentos (`--sem-publicar`,
+  5 minutos): 563 trechos; acerto entre os 4 primeiros de 0,91, MRR de 0,74, limiar de
+  0,858 e 100% das perguntas fora do escopo rejeitadas.
+- Com o guia prático (37 perguntas no escopo): 648 trechos (314 do Guia de Vigilância, 91
+  de dengue, 89 de chikungunya, 85 do guia prático e 69 de febre amarela); acerto de 0,81,
+  só um pouco acima do portão, MRR de 0,68, limiar de 0,858 e 100% de rejeição fora do
+  escopo. As falhas são da busca: "remédios para dor e febre" não traz os trechos de
+  dipirona e paracetamol, e "hidratação de grávida" traz a de adultos e a de idosos.
+- Comparação medida em 2026-11-17 (37 perguntas; tempo de busca por pergunta com 2
+  threads; RAM do processo de avaliação):
+
+  | Configuração | Acerto entre os 4 | MRR | Tempo | RAM |
+  |---|---|---|---|---|
+  | e5-small (anterior) | 0,81 | 0,68 | 13 ms | 700 MB |
+  | e5-base | 0,81 | 0,68 | 33 ms | 870 MB |
+  | e5-small + reranker, 20 candidatos, 512 tokens | 0,92 | 0,84 | 7,7 s | 1.050 MB |
+  | **e5-small + reranker, 10 candidatos, 256 tokens (adotado)** | **0,92** | **0,83** | **1,5 s** | **1.030 MB** |
+
+  O e5-base não melhora a busca e quebra o limiar: a maior similaridade fora do escopo
+  (0,887) passa a menor do escopo (0,886). Com o reranker, ainda falham "sintomas da
+  dengue", "hidratação de grávida" e "risco de complicações". O tokenizer do reranker é
+  o mesmo vocabulário XLM-R do e5, mas com normalização diferente; compartilhá-lo
+  economizaria cerca de 300 MB e não foi testado.
+- Candidatos do reranker e sinônimos, medidos em 2026-11-17 com 14 perguntas coloquiais
+  de controle (escritas fora do conjunto de avaliação, mas com o mesmo conhecimento do
+  vocabulário leigo usado no dicionário, então não totalmente independentes):
+
+  | Candidatos | Sinônimos | Teste (37): acerto / MRR | Controle (14): acerto / MRR |
+  |---|---|---|---|
+  | 10 primeiros da fusão | não | 0,92 / 0,83 | 0,71 / 0,58 |
+  | **10 primeiros da fusão** | **nas duas buscas (adotado)** | **0,95 / 0,85** | **0,86 / 0,70** |
+  | 5 da densa + 5 do BM25 | não | 0,89 / 0,78 | 0,71 / 0,63 |
+  | 5 da densa + 5 do BM25 | nas duas buscas | 0,92 / 0,81 | 0,86 / 0,77 |
+
+  A união das duas listas traz trechos que só uma das buscas acerta, mas tira outros que
+  a fusão trazia. As perguntas de controle foram para o `avaliacao.yaml` (51 no escopo).
+  Ainda falham "sintomas da dengue" (ampla; o e5 a aproxima de "sinais de alarme"), "risco
+  de complicações", "dor atrás dos olhos" e "quantos dias dura a febre".
+- Resposta (`rag/resposta.responder`): (1) sinais de alarme (`rag/seguranca.py`, Quadro 1
+  do manual de dengue de 2024) interrompem antes da busca, com o botão "Não estou com esse
+  sintoma, quero só a informação"; (2) abaixo do limiar, "não encontrei"; (3) o LLM recebe
+  os 4 trechos numerados e as 2 últimas trocas e responde `NAO_ENCONTRADO` se os trechos
+  não bastam; (4) resposta sem citação `[n]` válida é descartada (motivo `sem_citacao`);
+  (5) sem chave, com a cota esgotada ou com erro do LLM, a página mostra os 3 trechos mais
+  relevantes com a citação. O prompt proíbe diagnóstico e doses de medicamentos.
+- Fontes sempre visíveis: manual, edição, páginas do PDF, seção e link `#page=N`.
+- Perguntas sem resposta (`rag/registro.py`): `CommitScheduler` grava JSONL num diretório
+  temporário do servidor e envia a cada 10 minutos ao dataset privado
+  `LeticiaF/radar-epidemiologico-consultas`, só com pergunta (CPF, e-mail, telefone e CEP
+  mascarados), data, motivo e similaridade. Sem o token, só o log.
+- Página: aviso permanente, nota de privacidade, manuais consultados, exemplos, limite de
+  20 perguntas por sessão e cache de 24 h da primeira pergunta de cada conversa (os
+  exemplos não gastam cota de novo).
+- Memória do embedder no app (medida em 2026-11-17): cerca de 520 MB, pico de 600 MB na
+  carga; o tokenizer do e5 sozinho ocupa 300 MB. O reranker acrescenta cerca de 330 MB.
 
 ---
 
@@ -550,6 +666,20 @@ metadados.
 | As semanas recentes da dengue **caem** depois de "completas": entre os cortes de 2026-10-27 e 2026-11-10, as semanas 36 a 40 perderam de 6% a 12% dos casos prováveis (suspeitos descartados depois). O dado parcial de uma semana incompleta não é um piso | Não forçar a estimativa para cima do dado parcial; a página explica que ele muda nos dois sentidos. As versões antigas ficam no histórico Git do dataset no Hub |
 | `workflow_run` só dispara pelo arquivo de workflow que está na branch padrão | Ao mudar o gatilho de um workflow numa branch, testar com disparo manual; o automático só vale depois do merge |
 | `/vigilancia-e-meio-ambiente/svsa-populacao-residente` traz a população por ano, mas aberta por idade e sexo (cerca de 900 mil linhas por ano) | Usar a estimativa de 2022 do endpoint de regiões de saúde |
+| O Llama 3.3 70B, recomendado antes, foi desligado no Groq em 2026-08-16 (e os Llama 4, Qwen3 e Kimi também saíram) | `openai/gpt-oss-120b` com reserva `gpt-oss-20b`; modelos em `RADAR_LLM_MODELOS` |
+| A cota gratuita do Groq é de 8 mil tokens por minuto por modelo: cerca de 2 perguntas por minuto | Modelo de reserva, limite de perguntas por sessão, cache da primeira pergunta e modo só com trechos quando a cota acaba |
+| O torch do PyPI para Linux puxa as bibliotecas CUDA (vários GB) e ocupa centenas de MB de RAM | Embeddings em ONNX; `tests/test_requirements.py` falha se torch, transformers ou `nvidia-*` entrarem no `app/requirements.txt` |
+| O e5 trunca a entrada em 512 tokens (a seção 7.4 pedia trechos de 500 a 800) | Trechos de até 400 tokens; o cabeçalho e o prefixo cabem no resto |
+| O ONNX fp32 do e5-small ocupa 885 MB de RAM, com pico de 1,2 GB; o tokenizer, 300 MB por cópia | Modelo int8 (`model_qint8_avx512_vnni.onnx`, roda em qualquer x86-64; cosseno acima de 0,99 com o fp32), uma cópia só do tokenizer e sem a arena de memória do onnxruntime |
+| Metade das páginas do manual de febre amarela são imagens, inclusive quadro clínico e diagnóstico | `ocr: true` no `fontes.yaml`: RapidOCR com `replace_broken_text_layer` |
+| Fontes com codificação própria geram glifos de uso privado (`\uf761` em vez de "a"; `\uf034` como seta) | `chunk.limpar` decodifica U+F700–F7FF e troca os demais por espaço |
+| Cabeçalhos de página com o número ("20 \| Ministério da Saúde") viravam títulos de seção, e o filtro de repetidos não os pegava porque o número muda | `chunk.remover_repetidos` ignora números no início e no fim do texto ao comparar |
+| O reranker com 20 candidatos e pares de 512 tokens leva 7,7 s por pergunta na CPU, com a mesma qualidade que 10 candidatos e 256 tokens (1,5 s) | `RADAR_RERANK_CANDIDATOS=10` e `RADAR_RERANK_MAX_TOKENS=256` |
+| O usuário escreve "grávida", "coceira", "remédio"; os manuais, "gestante", "prurido", "medicamento". O BM25 não liga os termos e o e5-small nem sempre | Expansão da pergunta com `rag/sinonimos.yaml` nas duas buscas; o limiar segue sobre a pergunta original |
+| O sumário de um manual tem o nome de todas as seções e ganhava as buscas | `chunk.filtrar_secoes` descarta sumário, linhas de sumário ("Apêndices \| 69"), ficha catalográfica, referências e expediente |
+| O filtro de alarme por padrões dispara também em perguntas informativas ("dengue causa sangramento?") | Alerta com o botão "Não estou com esse sintoma, quero só a informação" (decisão da usuária) |
+| O Ragas 0.4.3 não importa com o `langchain-community` 0.4 (`chat_models.vertexai` saiu) | `ragas>=0.4.4` |
+| `st.page_link` quebra nas páginas abertas sozinhas pelo `AppTest` (sem `st.navigation`) | Citar a página pelo nome no texto |
 
 ---
 
@@ -561,7 +691,8 @@ metadados.
 │   ├── ci.yml               # push/PR: Ruff, pytest e sincronia do requirements.txt
 │   ├── etl.yml              # cron: extração, agregação, publicação no Hub
 │   ├── train.yml            # depois de cada etl: retreino e publicação das estimativas
-│   └── index.yml            # manual: reindexação do RAG
+│   ├── index.yml            # manual: indexação dos manuais do RAG
+│   └── avaliacao.yml        # manual: avaliação das respostas do chatbot com o Ragas
 ├── notebooks/
 │   └── 01_analise_exploratoria.ipynb  # etapa 0: análise qualitativa e quantitativa
 ├── common/
@@ -579,11 +710,20 @@ metadados.
 │   ├── evaluate.py          # backtest de origem móvel, MAE/MASE, intervalos
 │   └── train.py             # ponto de entrada: python -m ml.train [--sem-publicar]
 ├── rag/
-│   ├── fontes.yaml          # URLs dos manuais (não os PDFs)
-│   ├── ingest.py            # download e parsing dos manuais
-│   ├── chunk.py
-│   ├── index.py             # embeddings + FAISS
-│   ├── retrieve.py          # híbrido BM25 + denso, RRF, reranker
+│   ├── fontes.yaml          # URLs dos manuais (não os PDFs), páginas e OCR
+│   ├── avaliacao.yaml       # perguntas de avaliação da busca (no escopo e fora)
+│   ├── ingest.py            # download e conversão com Docling; --sumario e --procurar
+│   ├── chunk.py             # blocos → seções → trechos (puro)
+│   ├── texto.py             # normalização, tokenização e stopwords
+│   ├── embeddings.py        # e5 em ONNX (CI e app)
+│   ├── index.py             # ponto de entrada: python -m rag.index [--sem-publicar]
+│   ├── retrieve.py          # híbrido BM25 + denso, RRF, reranking, limiar; carga do Hub
+│   ├── rerank.py            # cross-encoder em ONNX que reordena os candidatos
+│   ├── sinonimos.yaml       # vocabulário leigo → termos dos manuais (editável)
+│   ├── sinonimos.py         # expansão da pergunta antes das buscas
+│   ├── resposta.py          # prompt, cliente do LLM, citações, orquestração
+│   ├── registro.py          # perguntas sem resposta no dataset privado
+│   ├── avaliacao_respostas.py  # Ragas: fidelidade e precisão de contexto
 │   └── seguranca.py         # filtro de sinais de alarme
 ├── app/
 │   ├── main.py              # st.navigation; ajusta o sys.path no Community Cloud
@@ -622,15 +762,15 @@ metadados.
 - Segredos só no `.env` (ignorado pelo git), nunca no `.env.example`. Conferir o diff contra
   `hf_` antes de commitar.
 - Notebooks versionados sem saídas, para que dados não entrem no repositório.
-- Ao mudar os grupos `app` ou `ml`, regenerar `app/requirements.txt` com
-  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --no-emit-project -o app/requirements.txt`;
+- Ao mudar os grupos `app`, `ml` ou `rag`, regenerar `app/requirements.txt` com
+  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --group rag --no-emit-project -o app/requirements.txt`;
   o CI falha se ele estiver desatualizado.
 
 ---
 
 ## 11. Ordem de implementação sugerida
 
-Situação em 2026-11-11 entre colchetes.
+Situação em 2026-11-17 entre colchetes.
 
 
 0. [Feito; decisões tomadas em 2026-11-04, seção 7.1] **Análise exploratória qualitativa e quantitativa** (`notebooks/01_analise_exploratoria.ipynb`):
@@ -644,7 +784,8 @@ Situação em 2026-11-11 entre colchetes.
 4. [Feito, branch `feature/etl-arboviroses`] ETL de arboviroses (Brasil inteiro, FTP do SINAN), mais o dicionário de municípios do IBGE e a população.
 5. [Feito, PR #5] Feature 1, o dashboard, com febre amarela e o tema visual.
 6. [Feito, PR #7] Feature 2, a estimativa de tendência (seção 7.2).
-7. [Pendente] Feature 4, o chatbot RAG.
+7. [Implementado na branch `feature/chatbot-rag`; índice publicado em 2026-11-18; falta o
+   merge] Feature 4, o chatbot RAG (seção 7.4).
 
 ---
 
@@ -654,7 +795,9 @@ Situação em 2026-11-11 entre colchetes.
 - ~~Confirmar os nomes exatos dos parâmetros de filtro por endpoint no Swagger.~~ Ver seção 3.
 - ~~Definir município de referência, semana de referência, definição de caso e recorte.~~
   Residência, início dos sintomas, casos prováveis e Brasil inteiro (seção 7.1).
-- Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.
+- ~~Levantar a lista definitiva de manuais do MS que compõem o corpus do RAG.~~ Seção 4.4.
+- Chatbot: revisar com profissional de saúde os sinais de alarme (`rag/seguranca.py`) e o
+  prompt; acompanhar as perguntas sem resposta no dataset privado para ampliar o corpus.
 - Profissionais por UBS: implementado na branch `feature/profissionais-ubs` (seção 7.3).
   O FTP do DATASUS aceita conexões do GitHub Actions (verificado em 2026-11-04: etapa
   completa em cerca de 11 minutos no runner). Especialistas (dermatologia, psiquiatria)
@@ -676,22 +819,22 @@ Situação em 2026-11-11 entre colchetes.
 
 ## 13. Estado atual e contexto para novas sessões
 
-Atualizado em 2026-11-12.
+Atualizado em 2026-11-17.
 
 ### Onde as coisas estão
 
 | O quê | Onde |
 |---|---|
 | Código | GitHub `Leticia-Infnet/radar-epidemiologico` (público), branch `main` |
-| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-11), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
+| Dados publicados | Dataset `LeticiaF/radar-epidemiologico-dados` no Hugging Face Hub: `ubs/` (44.679 UBS com coordenada válida), `municipios/` (5.571), `profissionais/` (395.400 linhas, 42.136 UBS, competência 2026-09), `populacao/` (5.570 municípios, 2022), `arboviroses/` (12.094.641 linhas em 81 partições por doença e UF, mais `resumo.parquet`; corte em 2026-11-10), `febre_amarela/` (2.880 casos confirmados, 1994/1995 a 2025/2026) e `previsao/` (11.040 estimativas de tendência de 1.380 séries, métricas do backtest e modelos; treino de 2026-11-11) e `rag/` (índice FAISS e 648 trechos de 5 documentos do MS; publicado em 2026-11-18 a partir da máquina local), cada um com `metadados.json`. O cron semanal do `etl` atualiza tudo, menos `municipios/`; o `train` refaz `previsao/` depois de cada `etl` |
 | Aplicação | Streamlit Community Cloud, publicada a partir da `main` (entrypoint `app/main.py`, Python 3.12) |
-| Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF`. Em 2026-11-12: 226,00 horas em 9 fases, as últimas "Manutenção do ETL" (PR #6) e "Estimativa de tendência" (PR #7). Como lançar: ver "Planilha de horas" abaixo |
-| Documentos | `docs/` (apresentação e diagrama de arquitetura; o diagrama ainda mostra o HF Spaces) |
+| Horas do projeto | Planilha Google `Horas-Projeto-Radar-Epidemiologico`, aba "Horas do projeto" (ID `1kHgQu8lYhrIi3QYbtEX5ydG9YshPuhe1GIfrFNRx_-s`). Cada etapa concluída ganha linhas na sua fase; o resumo por fase usa `SUMIF`. Em 2026-11-18: 284,50 horas em 11 fases, acima das 280 exigidas pelo projeto de extensão; as últimas são "Chatbot RAG" (49,00) e "Documentação final" (9,50: diagrama e roteiro de apresentação). Como lançar: ver "Planilha de horas" abaixo |
+| Documentos | `docs/`: apresentação inicial, diagrama da proposta (`arquitetura-arboviroses.jpg`, ainda com o HF Spaces) e o diagrama atual (`arquitetura-radar-epidemiologico.svg` e `.png`, de 2026-11-18). O roteiro de apresentação (`docs/roteiro-apresentacao.md`) fica fora do Git (`.git/info/exclude`) |
 
 ### Ambiente da usuária
 
 - Ubuntu no WSL; repositório em `~/radar-epidemiologico` (sistema de arquivos do Linux).
-- `uv` em `~/.local/bin`; `uv sync` instala os grupos `dev`, `etl`, `ml`, `app` e `eda`.
+- `uv` em `~/.local/bin`; `uv sync` instala os grupos `dev`, `etl`, `ml`, `app`, `rag` e `eda`; o `indexacao` (Docling e torch) só com `--group indexacao`.
 - `gh` autenticado como `Leticia-Infnet`; conta do Hugging Face `LeticiaF`.
 - `.env` local com `RADAR_HF_TOKEN` de **escrita**, usado para publicar os municípios.
 - Segredos no GitHub: `RADAR_HF_TOKEN` (secret) e `RADAR_HF_DATASET_REPO` (variable).
@@ -739,17 +882,18 @@ funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela aju
   com piso de linhas e `--sem-publicar`.
 - `notebooks/01_analise_exploratoria.ipynb`: análise exploratória com síntese ao final.
 - `app/`: página inicial, dashboard (dengue, chikungunya, zika e febre amarela), tendência
-  (dengue e chikungunya) e mapa de UBS completos, com o tema verde e marrom; o chatbot é
-  um esqueleto "em construção".
+  (dengue e chikungunya), mapa de UBS e chatbot, com o tema verde e marrom.
 - `ml/`: estimativa de tendência de dengue e chikungunya (seção 7.2): leitura das séries,
   atributos, candidatos, backtest de origem móvel, intervalos, portão de qualidade e
   publicação em `previsao/`.
-- `rag/`: filtro de sinais de alarme (`seguranca.py`, primeira versão por padrões de texto);
-  o resto são esqueletos. `rag/fontes.yaml` está vazio.
+- `rag/`: chatbot RAG completo (seção 7.4): indexação com Docling, chunking, embeddings
+  em ONNX, busca híbrida com limiar, avaliação e portão de qualidade, resposta com
+  citação obrigatória, filtro de alarme e registro das perguntas sem resposta.
 - Testes: `uv run pytest` (unitários, sem rede) e `uv run pytest -m integracao` (APIs reais).
 - Workflows: `ci` (push e PR), `etl` (manual e cron semanal, segundas às 03h de
   Brasília: `ubs profissionais populacao arboviroses febre_amarela`), `train` (manual e ao
-  fim de cada `etl` com sucesso) e `index` (esqueleto).
+  fim de cada `etl` com sucesso), `index` (manual: indexação dos manuais) e `avaliacao`
+  (manual: Ragas).
 
 ### Próximos passos combinados
 
@@ -758,10 +902,16 @@ funcionalidade inteira fica entre 25 e 50), avisa que são estimativas e ela aju
    Ver se ele publicou `previsao/` pelo runner (`treinado_em` e `corte` novos no
    `previsao/metadados.json`) e se a página Tendência do app em produção abre com esses
    dados. Se o `etl` falhar, o `train` não roda e as estimativas ficam com o corte antigo.
-1. Feature 4, o chatbot RAG (seção 7.4); falta a lista de manuais em `rag/fontes.yaml`.
+1. Chatbot RAG (seção 7.4), na branch `feature/chatbot-rag`: o índice já está em `rag/`
+   (publicado da máquina local em 2026-11-18). Falta: push, PR e merge; chave do
+   Groq em `RADAR_LLM_API_KEY` (`.env`, Secrets do Streamlit e, para o `avaliacao`, do
+   GitHub); dataset privado `LeticiaF/radar-epidemiologico-consultas` e token
+   *fine-grained* de escrita só nele em `RADAR_HF_CONSULTAS_TOKEN` (Secrets do Streamlit).
+   Conferir no Actions que bvsms e gov.br respondem ao runner. Depois do merge, conferir a
+   memória do app em produção.
 2. Evoluções possíveis do dashboard: mapa coroplético por município; incidência com a
    população de cada ano. Do mapa: filtrar UBS por ocupação (a mais próxima com pediatra).
    Da tendência: erro em tempo real com as versões guardadas no Hub (seção 12).
-3. Atualizar o diagrama de arquitetura em `docs/` (ainda mostra o HF Spaces; agora há o
-   FTP do DATASUS como fonte).
+3. ~~Atualizar o diagrama de arquitetura em `docs/`.~~ Feito em 2026-11-18
+   (`docs/arquitetura-radar-epidemiologico.svg`).
 

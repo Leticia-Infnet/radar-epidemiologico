@@ -12,6 +12,7 @@ BASE = """
 [data-testid="stMarkdownContainer"] li { font-size: 1.15rem !important; }
 [data-testid="stCaptionContainer"] p { font-size: 1.05rem !important; }
 [data-testid="stTextInputRootElement"] input { font-size: 1.15rem !important; }
+[data-testid="stChatInputTextArea"] { font-size: 1.15rem !important; }
 /* Valor e variação dos indicadores herdam o tamanho do próprio bloco; sem isto, a regra
    acima os deixaria do tamanho do texto corrido. */
 [data-testid="stMetricValue"] [data-testid="stMarkdownContainer"] p,

@@ -41,7 +41,7 @@ navegacao = st.navigation(
         st.Page(PAGINAS / "1_dashboard.py", title="Dashboard", icon="📊"),
         st.Page(PAGINAS / "2_previsao.py", title="Tendência", icon="📈"),
         st.Page(PAGINAS / "3_mapa.py", title="Mapa de UBS", icon="🗺️"),
-        st.Page(PAGINAS / "4_chatbot.py", title="Chatbot"),
+        st.Page(PAGINAS / "4_chatbot.py", title="Chatbot", icon="💬"),
     ]
 )
 navegacao.run()

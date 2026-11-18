@@ -164,3 +164,23 @@ class MetricaBacktest(pa.DataFrameModel):
 
     class Config:
         unique = ["doenca", "local", "passo", "modelo"]
+
+
+class TrechoManual(pa.DataFrameModel):
+    """Trecho de um manual do MS indexado para o chatbot, com a página do PDF e a seção."""
+
+    id: str = pa.Field(unique=True, str_matches=r"^[a-z0-9-]+-\d{4}$")
+    manual: str = pa.Field(str_length={"min_value": 1})
+    titulo: str = pa.Field(str_length={"min_value": 1})
+    edicao: str
+    url: str = pa.Field(str_startswith="https://")
+    pagina_inicial: int = pa.Field(ge=1)
+    pagina_final: int = pa.Field(ge=1)
+    secao: str = pa.Field(str_length={"min_value": 1})
+    texto: str = pa.Field(str_length={"min_value": 1})
+    n_tokens: int = pa.Field(ge=20, le=512)
+
+    @pa.dataframe_check
+    def paginas_ordenadas(cls, dados) -> pl.LazyFrame:
+        """pagina_inicial ≤ pagina_final."""
+        return dados.lazyframe.select(pl.col("pagina_inicial") <= pl.col("pagina_final"))

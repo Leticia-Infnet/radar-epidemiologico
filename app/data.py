@@ -5,7 +5,7 @@ O Community Cloud não tem disco persistente: tudo é lido do Hub e mantido em m
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 import streamlit as st
@@ -14,6 +14,11 @@ from sklearn.neighbors import BallTree
 
 from app.geo import construir_indice
 from common.config import get_settings
+
+if TYPE_CHECKING:
+    from rag.registro import Registrador
+    from rag.resposta import ClienteLLM
+    from rag.retrieve import Buscador
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +127,39 @@ def metricas_previsao() -> pd.DataFrame | None:
     except (FileNotFoundError, OSError) as exc:
         log.warning("Métricas do backtest indisponíveis: %s", exc)
         return None
+
+
+# O chatbot importa faiss, onnxruntime e o próprio `rag` só dentro das funções, para as
+# outras páginas não carregarem o modelo de embeddings.
+@st.cache_resource(ttl=86400, show_spinner="Carregando os manuais do Ministério da Saúde...")
+def buscador_rag() -> "Buscador | None":
+    """Índice dos manuais, trechos e embedder (e5 em ONNX) publicados por `rag.index`.
+
+    Devolve None se o índice ainda não estiver no Hub.
+    """
+    from rag.retrieve import carregar_buscador
+
+    try:
+        return carregar_buscador()
+    except (FileNotFoundError, OSError, KeyError) as exc:
+        log.warning("Índice dos manuais indisponível: %s", exc)
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def cliente_llm() -> "ClienteLLM | None":
+    """Cliente do LLM; None sem `RADAR_LLM_API_KEY` (o chatbot mostra só os trechos)."""
+    from rag.resposta import ClienteLLM
+
+    return ClienteLLM.da_configuracao()
+
+
+@st.cache_resource(show_spinner=False)
+def registro_consultas() -> "Registrador":
+    """Registro das perguntas sem resposta no dataset privado (nulo sem o token)."""
+    from rag.registro import criar_registro
+
+    return criar_registro()
 
 
 def _tipos_compactos(tabela: pd.DataFrame) -> pd.DataFrame:

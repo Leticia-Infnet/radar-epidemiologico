@@ -1,11 +1,44 @@
-# Manuais do Ministério da Saúde que compõem o corpus do RAG.
+# Manuais do Ministério da Saúde que compõem o corpus do RAG (decisão de 2026-11-17).
 # Versione apenas as URLs; os PDFs são baixados no CI (AGENTS.md, seção 4.4).
-# A lista definitiva ainda está em aberto (AGENTS.md, seção 12).
 #
-# Formato de cada item:
-# - id: dengue-manejo-clinico
-#   titulo: "Dengue: diagnóstico e manejo clínico, adulto e criança"
-#   doenca: dengue
-#   url: https://bvsms.saude.gov.br/...
-#   edicao: "6ª edição, 2024"
-manuais: []
+# `paginas` (opcional): páginas do PDF, a partir de 1, inclusivas. Para achá-las:
+#   uv run --with pypdf --with pyyaml python -m rag.ingest --sumario <id>
+# `ocr` (opcional): o manual tem páginas digitalizadas como imagem.
+manuais:
+  - id: dengue-manejo-clinico
+    titulo: "Dengue: diagnóstico e manejo clínico – adulto e criança"
+    doencas: [dengue]
+    edicao: "6ª edição, 2024"
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/dengue_diagnostico_manejo_clinico_6ed.pdf
+
+  - id: chikungunya-manejo-clinico
+    titulo: "Chikungunya: manejo clínico"
+    doencas: [chikungunya]
+    edicao: "1ª edição, 2017"
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/chikungunya_manejo_clinico.pdf
+
+  - id: febre-amarela-manejo-clinico
+    titulo: "Manual de manejo clínico da febre amarela"
+    doencas: [febre_amarela]
+    edicao: "1ª edição, 2020"
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/manual_manejo_clinico_febre_amarela.pdf
+    # Metade das páginas, inclusive as de quadro clínico e diagnóstico, são imagens.
+    ocr: true
+
+  # Só o capítulo 7 (arboviroses): dengue, chikungunya e zika, febre amarela e outras.
+  - id: guia-vigilancia-arboviroses
+    titulo: "Guia de Vigilância em Saúde, volume 2 – arboviroses"
+    doencas: [dengue, chikungunya, zika, febre_amarela]
+    edicao: "6ª edição revisada, 2024"
+    url: https://www.gov.br/saude/pt-br/centrais-de-conteudo/publicacoes/svsa/vigilancia/guia-de-vigilancia-em-saude-volume-2-6a-edicao
+    paginas: [272, 395]
+
+  - id: guia-pratico-arboviroses-urbanas
+    titulo: "Guia Prático de Arboviroses Urbanas - Atenção Primária à Saúde"
+    doencas: [dengue, chikungunya, zika]
+    edicao: "2ª edição, 2026"
+    url: https://sisaps.saude.gov.br/sistemas/materialtecnico/arquivos/guia-arboviroses-urbanas.pdf
+    # Do capítulo "Arboviroses" ao fim do de zika. Fora: apresentação, organização do
+    # trabalho na APS, cenário epidemiológico, e-SUS, referências, apêndices de
+    # dimensionamento e os fluxogramas dos anexos (o de dengue é imagem).
+    paginas: [16, 72]

@@ -34,17 +34,19 @@ app = [
     "streamlit-folium>=0.22",
 ]
 # Dependências do chatbot em tempo de execução (vão para o Streamlit Community Cloud).
+# Embeddings em ONNX, sem torch: o torch do PyPI puxa as bibliotecas CUDA.
 rag = [
     "faiss-cpu>=1.8",
-    "groq>=0.11",
+    "onnxruntime>=1.20",
     "rank-bm25>=0.2",
-    "sentence-transformers>=3.1",
+    "tokenizers>=0.20",
 ]
 # Dependências usadas só no CI de indexação; pesadas demais para a aplicação.
 indexacao = [
     "docling>=2.5",
     "pypdf>=5.0",
-    "ragas>=0.2",
+    "pyyaml>=6.0",
+    "ragas>=0.4.4",
 ]
 eda = [
     "ipykernel>=6.29",
@@ -59,8 +61,8 @@ dev = [
 ]
 
 [tool.uv]
-# `rag` e `indexacao` puxam torch e Docling; instale-os explicitamente com --group.
-default-groups = ["dev", "etl", "ml", "app", "eda"]
+# `indexacao` puxa torch e Docling; instale-o explicitamente com --group.
+default-groups = ["dev", "etl", "ml", "app", "rag", "eda"]
 
 [build-system]
 requires = ["hatchling"]

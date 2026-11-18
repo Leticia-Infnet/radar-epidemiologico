@@ -11,6 +11,10 @@ from rag.seguranca import sinais_detectados
         ("minha gengiva está sangrando", "sangramento"),
         ("Ela está muito sonolenta e não consegue ficar acordada", "letargia"),
         ("sinto tontura ao levantar", "hipotensão postural"),
+        ("ontem ela desmaiou no banheiro", "hipotensão postural"),
+        ("meu bebê está muito irritado e não para de chorar", "letargia"),
+        ("estou com falta de ar desde ontem", "acúmulo de líquidos ou falta de ar"),
+        ("a barriga dele está inchada", "acúmulo de líquidos ou falta de ar"),
     ],
 )
 def test_detecta_sinais_de_alarme(mensagem, sinal):

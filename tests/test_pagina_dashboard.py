@@ -33,6 +33,9 @@ def sem_rede(monkeypatch):
     monkeypatch.setattr(data, "casos_uf", lambda doenca, uf: CASOS_PE)
     # A página de tendência abre com as demais em `test_app`; sem estimativas, ela avisa.
     monkeypatch.setattr(data, "estimativas", lambda: None)
+    # O chatbot também abre em `test_app`; sem índice, ele avisa que está indisponível.
+    monkeypatch.setattr(data, "buscador_rag", lambda: None)
+    monkeypatch.setattr(data, "cliente_llm", lambda: None)
 
 
 def _abrir() -> AppTest:

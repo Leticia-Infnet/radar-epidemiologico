@@ -1,0 +1,35 @@
+name: avaliacao
+
+# Avaliação das respostas do chatbot com o Ragas (rag/avaliacao_respostas.py). Manual:
+# gasta a cota gratuita do Groq, então rode fora do horário de uso do app.
+on:
+  workflow_dispatch:
+    inputs:
+      perguntas:
+        description: "Quantas perguntas de rag/avaliacao.yaml avaliar"
+        type: number
+        default: 20
+      sem_publicar:
+        description: "Só avaliar, sem publicar o resultado no Hub"
+        type: boolean
+        default: false
+
+env:
+  UV_NO_SYNC: "1"
+
+jobs:
+  avaliacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RADAR_HF_TOKEN: ${{ secrets.RADAR_HF_TOKEN }}
+      RADAR_HF_DATASET_REPO: ${{ vars.RADAR_HF_DATASET_REPO }}
+      RADAR_LLM_API_KEY: ${{ secrets.RADAR_LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group rag --group indexacao --group etl --no-default-groups
+      - run: >-
+          uv run python -m rag.avaliacao_respostas
+          --perguntas ${{ inputs.perguntas }}
+          ${{ inputs.sem_publicar && '--sem-publicar' || '' }}

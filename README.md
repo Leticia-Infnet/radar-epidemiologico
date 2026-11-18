@@ -37,15 +37,15 @@ no Hub; a aplicação lê do Hub no startup.
 Requer [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync                      # instala dev, etl, ml, app e eda
+uv sync                      # instala dev, etl, ml, app, rag e eda
 uv run pytest                # testes
 uv run ruff check . && uv run ruff format --check .
 uv run jupyter lab notebooks/
 uv run streamlit run app/main.py
 ```
 
-Os grupos `rag` e `indexacao` puxam torch e Docling e ficam fora do padrão:
-`uv sync --group rag --group indexacao`.
+O grupo `indexacao` puxa torch e Docling e fica fora do padrão:
+`uv sync --group indexacao`.
 
 Copie `.env.example` para `.env` e preencha os segredos. No GitHub, cadastre
 `RADAR_HF_TOKEN` em *Secrets* e `RADAR_HF_DATASET_REPO` em *Variables*.
@@ -104,6 +104,33 @@ O workflow `train` roda ao fim de cada `etl` concluído com sucesso e também ma
 nunca é treinado nem executado em request. O resultado é uma estimativa estatística de
 tendência, não uma previsão oficial.
 
+## Chatbot RAG
+
+Orienta sobre dengue, chikungunya, zika e febre amarela a partir de cinco documentos do
+Ministério da Saúde (lista em `rag/fontes.yaml`), **sem diagnosticar**: toda resposta cita
+manual e página, perguntas sem resposta nos manuais recebem "não encontrei", e sinais de
+alarme da dengue interrompem a conversa com a orientação de procurar atendimento.
+
+```bash
+uv run --group indexacao python -m rag.index --sem-publicar   # baixa, converte, indexa e avalia
+uv run --with pypdf --with pyyaml python -m rag.ingest --sumario <id>      # páginas do PDF
+uv run --with pypdf --with pyyaml python -m rag.ingest --procurar <id> "termo"
+```
+
+A indexação baixa os PDFs para um diretório temporário, converte com o Docling (OCR só
+nos manuais marcados), divide em trechos por seção e gera os embeddings do
+`multilingual-e5-small` em ONNX (sem torch, o mesmo modelo no CI e no app). Antes de
+publicar em `rag/` no Hub, avalia a busca híbrida (BM25 + densa, reordenada por um
+cross-encoder multilíngue em ONNX) com as perguntas de
+`rag/avaliacao.yaml`, calibra o limiar de similaridade e passa por um portão de
+qualidade. Workflow `index` (*Actions → index → Run workflow*).
+
+As respostas vêm do `openai/gpt-oss-120b` no Groq (cota gratuita; reserva no
+`gpt-oss-20b`), com chave em `RADAR_LLM_API_KEY`. As perguntas sem resposta vão para um
+dataset privado no Hub (`RADAR_HF_CONSULTAS_TOKEN`, token *fine-grained* com escrita só
+nele), sem identificação. O workflow manual `avaliacao` mede fidelidade e precisão de
+contexto das respostas com o Ragas e gasta a cota do Groq.
+
 ## Deploy
 
 A aplicação roda no [Streamlit Community Cloud](https://share.streamlit.io), ligada a
@@ -111,10 +138,11 @@ este repositório: cada push na `main` atualiza o app. Configuração do app:
 
 - *Main file path*: `app/main.py`; *Python version* (em *Advanced settings*): 3.12.
 - Dependências: `app/requirements.txt`, gerado a partir do `uv.lock`. Ao mudar os grupos
-  `app` ou `ml`, regenere com
-  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --no-emit-project -o app/requirements.txt`.
+  `app`, `ml` ou `rag`, regenere com
+  `uv export --no-hashes --no-dev --no-default-groups --group app --group ml --group rag --no-emit-project -o app/requirements.txt`.
   O CI falha se o arquivo estiver desatualizado.
-- Segredos em *Settings > Secrets*, em TOML, com os mesmos nomes do `.env`.
+- Segredos em *Settings > Secrets*, em TOML, com os mesmos nomes do `.env`: o chatbot usa
+  `RADAR_LLM_API_KEY` e `RADAR_HF_CONSULTAS_TOKEN`.
 
 ## Ordem de implementação
 
